@@ -540,16 +540,8 @@
     $('#api-source-note').textContent = amount === null
       ? 'No market quote is available for the selected print treatment.'
       : `TCGplayer market estimate · USD${updatedAt ? ` · updated ${new Date(updatedAt).toLocaleDateString()}` : ''}. This is a market estimate, not a live listing.`;
-    const directTcgplayerUrl = state.data.tcgplayerLinks?.[card.id];
     const tcgplayerLink = $('#tcgplayer-link');
-    tcgplayerLink.href = validTcgplayerProductUrl(directTcgplayerUrl || '') ? directTcgplayerUrl : '#';
-    tcgplayerLink.textContent = validTcgplayerProductUrl(directTcgplayerUrl || '')
-      ? 'Open exact card on TCGplayer ↗'
-      : 'Exact product link not set';
-    tcgplayerLink.classList.toggle('source-link-disabled', !validTcgplayerProductUrl(directTcgplayerUrl || ''));
-    tcgplayerLink.setAttribute('aria-disabled', String(!validTcgplayerProductUrl(directTcgplayerUrl || '')));
-    tcgplayerLink.tabIndex = validTcgplayerProductUrl(directTcgplayerUrl || '') ? 0 : -1;
-    $('#tcgplayer-product-url').value = validTcgplayerProductUrl(directTcgplayerUrl || '') ? directTcgplayerUrl : '';
+    tcgplayerLink.href = `https://www.tcgplayer.com/search/pokemon/product?productLineName=pokemon&q=${encoded}`;
     $('#pricecharting-link').href = `https://www.pricecharting.com/search-products?type=prices&q=${encoded}`;
     $('#ebay-sold-link').href = `https://www.ebay.com/sch/i.html?_nkw=${encoded}&_sacat=0&LH_Sold=1&LH_Complete=1`;
     $('#ebay-active-link').href = `https://www.ebay.com/sch/i.html?_nkw=${encoded}&_sacat=0`;
@@ -565,28 +557,6 @@
     ).join('');
     $('#prices-dialog').showModal();
     updatePriceLinks();
-  }
-
-  function saveTcgplayerProductLink() {
-    const card = state.pricesCard;
-    const input = $('#tcgplayer-product-url');
-    const value = input.value.trim();
-    if (!card) return;
-    if (!validTcgplayerProductUrl(value)) {
-      input.setCustomValidity('Paste an HTTPS TCGplayer product page URL, such as https://www.tcgplayer.com/product/123456/...');
-      input.reportValidity();
-      return;
-    }
-    input.setCustomValidity('');
-    const previous = state.data.tcgplayerLinks[card.id];
-    state.data.tcgplayerLinks[card.id] = value;
-    if (!saveData()) {
-      if (previous) state.data.tcgplayerLinks[card.id] = previous;
-      else delete state.data.tcgplayerLinks[card.id];
-      return;
-    }
-    updatePriceLinks();
-    showToast('Exact TCGplayer product link saved on this device.');
   }
 
   function openDetailsDialog(card) {
@@ -1012,8 +982,6 @@
     });
     $('#custom-variant').addEventListener('input', updateDialogPrice);
     $('#prices-variant').addEventListener('change', updatePriceLinks);
-    $('#tcgplayer-product-url').addEventListener('input', (event) => event.target.setCustomValidity(''));
-    $('#save-tcgplayer-link').addEventListener('click', saveTcgplayerProductLink);
     $('#card-form').addEventListener('submit', submitCardForm);
     $('#spend-form').addEventListener('submit', (event) => {
       event.preventDefault();

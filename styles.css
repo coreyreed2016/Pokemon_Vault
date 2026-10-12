@@ -22,8 +22,7 @@ main{max-width:1660px;margin:0 auto;padding:38px clamp(22px,4vw,58px) 24px}.page
 /* Aura Vault card-art cleanup: remove the silver/gray picture frame */
 .card-art-wrap,
 .spotlight-art,
-.alternate-print-art,
-.detail-art-wrap {
+.alternate-print-art {
   display: block;
   background: transparent !important;
   border: 0 !important;
@@ -47,9 +46,7 @@ main{max-width:1660px;margin:0 auto;padding:38px clamp(22px,4vw,58px) 24px}.page
 .card-art-wrap .card-art,
 .spotlight-art .card-art,
 .alternate-print-art .card-art,
-.detail-art-wrap .detail-art,
-img.card-art,
-img.detail-art {
+img.card-art {
   display: block;
   width: 100%;
   height: auto;
@@ -59,6 +56,63 @@ img.detail-art {
   box-shadow: none !important;
   background: transparent !important;
   border-radius: 0;
+}
+/* Keep detail artwork compact so card information stays visible beside it. */
+.detail-dialog-content { padding: 24px; }
+.detail-hero {
+  display: grid;
+  grid-template-columns: minmax(140px, 190px) minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+  margin: 0 24px 18px 0;
+}
+.detail-art-wrap {
+  display: grid;
+  width: 100%;
+  max-height: 280px;
+  place-items: center;
+  overflow: hidden;
+  padding: 6px;
+  border: 1px solid #26364a;
+  border-radius: 11px;
+  background: #0b1320;
+}
+.detail-art-wrap .detail-art {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 266px;
+  height: auto;
+  object-fit: contain;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.detail-meta { min-width: 0; }
+.detail-meta h2 { margin: 0 0 6px; font-size: clamp(20px, 3vw, 27px); overflow-wrap: anywhere; }
+.detail-meta > p { margin: 0 0 14px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.detail-meta .dialog-eyebrow { margin-bottom: 6px; }
+.detail-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.detail-metric { min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.025); }
+.detail-metric > span { display: block; color: var(--subtle); font-size: 8px; font-weight: 700; letter-spacing: .08em; line-height: 1.4; }
+.detail-metric > strong { display: block; margin-top: 4px; color: var(--gold2); font-size: 12px; overflow-wrap: anywhere; }
+.detail-dialog-content > #detail-content > .detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
+.detail-entry { margin: 12px 0; padding: 13px; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,.025); }
+.detail-entry h3 { margin: 0 0 10px; font-size: 13px; overflow-wrap: anywhere; }
+.detail-entry > p { margin: 10px 0 0; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.detail-entry .detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.alternate-print-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.alternate-print { min-width: 0; }
+@media(max-width:600px) {
+  .detail-dialog-content { padding: 21px 16px; }
+  .detail-hero { grid-template-columns: minmax(105px, 135px) minmax(0, 1fr); gap: 12px; margin-right: 18px; }
+  .detail-art-wrap { max-height: 210px; padding: 4px; }
+  .detail-art-wrap .detail-art { max-height: 200px; }
+  .detail-meta .detail-metrics { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .detail-metric { padding: 8px; }
+  .detail-metric > strong { font-size: 11px; }
+  .alternate-print-grid { grid-template-columns: minmax(0, 1fr); }
 }
 .card-tile .card-art-wrap > .card-art {
   width: 90%;
