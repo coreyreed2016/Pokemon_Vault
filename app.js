@@ -2,18 +2,26 @@
   'use strict';
 
   const API = 'https://api.pokemontcg.io/v2/cards';
+  const POKEDEX_API = 'https://pokeapi.co/api/v2/pokedex/1';
   const CACHE_KEY = 'lucario-ledger.catalog.v1';
+  const SPECIES_CACHE_KEY = 'lucario-ledger.species.v1';
   const DATA_KEY = 'lucario-ledger.data.v1';
   const MONTHLY_BUDGET = 50;
   const STALE_AFTER_DAYS = 7;
   const state = {
     cards: [],
+    scannedCards: [],
+    species: [],
+    selectedPokemon: 'lucario',
     data: loadData(),
     view: 'all',
     query: '',
     sort: 'newest',
-    filters: { rarity: '', condition: '', language: '', type: '' },
+    filters: { rarity: '', language: '', type: '', set: '' },
     loading: false,
+    catalogLoaded: false,
+    cameraStream: null,
+    scanWorker: null,
     dialogCard: null,
     pricesCard: null,
     editingGroupIndex: null,
@@ -70,7 +78,19 @@
 
   function pricesFor(card) {
     const prices = card?.tcgplayer?.prices || {};
-    return Object.keys(prices).filter((key) => typeof prices[key]?.market === 'number');
+    return Object.keys(prices).filter((key) => cardPrice(card, key) !== null);
+  }
+
+  function primaryVariant(card) {
+    return pricesFor(card)[0] || 'normal';
+  }
+
+  function cardSetNumber(card) {
+    if (!card?.number) return null;
+    const printedTotal = card.set?.printedTotal;
+    return Number.isInteger(printedTotal) && printedTotal > 0
+      ? `${card.number}/${printedTotal}`
+      : String(card.number);
   }
 
   function displayVariant(key) {
@@ -123,11 +143,51 @@
   }
 
   function currentCard(id) {
-    return state.cards.find((card) => card.id === id) || null;
+    return state.cards.find((card) => card.id === id) ||
+      state.scannedCards.find((card) => card.id === id) || null;
   }
 
   function cardLanguage(card) {
     return card.language || card.set?.language || 'English';
+  }
+
+  function formatPokemonName(name) {
+    const specialNames = {
+      farfetchd: "Farfetch'd",
+      flabebe: 'Flabébé',
+      'mime-jr': 'Mime Jr.',
+      'mr-mime': 'Mr. Mime',
+      'mr-rime': 'Mr. Rime',
+      'nidoran-f': 'Nidoran♀',
+      'nidoran-m': 'Nidoran♂',
+      'type-null': 'Type: Null'
+    };
+    if (specialNames[name]) return specialNames[name];
+    return name.split('-').map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : '').join('-');
+  }
+
+  function pokedexNumber(species) {
+    if (Number.isInteger(species?.number) && species.number > 0) return species.number;
+    const match = species?.url?.match(/\/(\d+)\/?$/);
+    return match ? Number(match[1]) : null;
+  }
+
+  function selectedPokemonName() {
+    return formatPokemonName(state.selectedPokemon);
+  }
+
+  function pokemonSearchTerm(name) {
+    const aliases = {
+      farfetchd: "farfetch'd",
+      flabebe: 'flabébé',
+      'mime-jr': 'mime jr.',
+      'mr-mime': 'mr. mime',
+      'mr-rime': 'mr. rime',
+      'nidoran-f': 'nidoran♀',
+      'nidoran-m': 'nidoran♂',
+      'type-null': 'type: null'
+    };
+    return aliases[name] || name;
   }
 
   function cardValue(cardId, variant) {
@@ -137,23 +197,27 @@
   }
 
   function refreshOverview() {
-    const uniqueOwned = totalOwnedPrints();
+    const uniqueOwned = new Set(state.cards.filter((card) => cardOwned(card.id) > 0).map((card) => card.id)).size;
+    const allOwnedPrints = totalOwnedPrints();
     const total = state.cards.length;
-    const ownedValue = state.data.owned.reduce((sum, item) => {
+    const visibleOwned = state.data.owned.filter((item) => currentCard(item.cardId));
+    const ownedValue = visibleOwned.reduce((sum, item) => {
       const value = cardValue(item.cardId, item.variant);
       return sum + (value === null ? 0 : value * item.copies.length);
     }, 0);
-    const unpricedOwnedCopies = state.data.owned.reduce((sum, item) =>
+    const unpricedOwnedCopies = visibleOwned.reduce((sum, item) =>
       sum + (cardValue(item.cardId, item.variant) === null ? item.copies.length : 0), 0);
-    const wishlistValue = state.data.wishlist.reduce((sum, item) => {
+    const visibleWishlist = state.data.wishlist.filter((item) => currentCard(item.cardId));
+    const wishlistValue = visibleWishlist.reduce((sum, item) => {
       const value = cardValue(item.cardId, item.variant);
       return sum + (value ?? 0);
     }, 0);
-    const unpricedWishlistItems = state.data.wishlist.filter((item) => cardValue(item.cardId, item.variant) === null).length;
+    const unpricedWishlistItems = visibleWishlist.filter((item) => cardValue(item.cardId, item.variant) === null).length;
     const spent = monthlyExpenses();
     const ratio = total ? Math.min(100, uniqueOwned / total * 100) : 0;
     $('#owned-count').textContent = String(uniqueOwned);
-    $('#total-count').textContent = `${total} catalog prints`;
+    $('#owned-count-label').textContent = `${selectedPokemonName()} cards owned`;
+    $('#total-count').textContent = `${total} ${selectedPokemonName()} prints`;
     $('#total-count-stat').textContent = `of ${total || '—'}`;
     $('#progress-bar').style.width = `${ratio}%`;
     $('#progress-label').textContent = total ? 'Unique prints collected' : 'Catalog loading';
@@ -163,7 +227,7 @@
       ? `Estimate · ${unpricedOwnedCopies} unpriced ${unpricedOwnedCopies === 1 ? 'copy' : 'copies'}`
       : 'Owned cards · estimated';
     $('#wishlist-value').textContent = formatMoney(wishlistValue);
-    $('#wishlist-count').textContent = `${state.data.wishlist.length} ${state.data.wishlist.length === 1 ? 'card' : 'cards'}${unpricedWishlistItems ? ` · ${unpricedWishlistItems} unpriced` : ''}`;
+    $('#wishlist-count').textContent = `${visibleWishlist.length} ${visibleWishlist.length === 1 ? 'card' : 'cards'}${unpricedWishlistItems ? ` · ${unpricedWishlistItems} unpriced` : ''}`;
     $('#budget-remaining').textContent = formatMoney(Math.max(0, MONTHLY_BUDGET - spent));
     $('#budget-spent').textContent = `${formatMoney(spent)} spent of $50`;
     $('#budget-bar').style.width = `${Math.min(100, spent / MONTHLY_BUDGET * 100)}%`;
@@ -171,8 +235,15 @@
     $('#owned-tab-count').textContent = String(uniqueOwned);
     $('#missing-tab-count').textContent = total ? String(Math.max(0, total - uniqueOwned)) : '—';
     $('#wishlist-tab-count').textContent = String(state.data.wishlist.length);
-    $('#nav-owned-count').textContent = String(uniqueOwned);
+    $('#nav-owned-count').textContent = String(allOwnedPrints);
     $('#nav-wishlist-count').textContent = String(state.data.wishlist.length);
+    const dexNumber = pokedexNumber(state.species.find((species) => species.name === state.selectedPokemon));
+    const dexLabel = dexNumber ? `#${dexNumber}` : 'Pokémon';
+    $('#focus-pokemon').textContent = selectedPokemonName();
+    $('#focus-pokemon-number').textContent = `Pokémon · ${dexLabel}`;
+    $('#featured-pokemon').textContent = selectedPokemonName();
+    $('#featured-pokemon-meta').innerHTML = `Pokémon card collection <span class="hero-separator">·</span> National Pokédex ${dexLabel}`;
+    $('#hero-pokedex-label').innerHTML = `AURA<br>NO. ${dexNumber ?? '—'}`;
   }
 
   function statusForPrice(card, variant) {
@@ -283,14 +354,21 @@
   function populateFilters() {
     const raritySelect = $('#rarity-filter');
     const languageSelect = $('#language-filter');
+    const setSelect = $('#set-filter');
     const selectedRarity = raritySelect.value;
     const selectedLanguage = languageSelect.value;
+    const selectedSet = setSelect.value;
     const rarities = [...new Set(state.cards.map((card) => card.rarity).filter(Boolean))].sort((a, b) => a.localeCompare(b));
     const languages = [...new Set(state.cards.map(cardLanguage))].sort((a, b) => a.localeCompare(b));
+    const sets = [...new Map(state.cards.filter((card) => card.set?.id)
+      .map((card) => [card.set.id, card.set.name || card.set.id])).entries()]
+      .sort((a, b) => a[1].localeCompare(b[1]));
     raritySelect.innerHTML = '<option value="">All rarities</option>' + rarities.map((rarity) => `<option value="${escapeAttribute(rarity)}">${escapeHtml(rarity)}</option>`).join('');
     languageSelect.innerHTML = '<option value="">All languages</option>' + languages.map((language) => `<option value="${escapeAttribute(language)}">${escapeHtml(language)}</option>`).join('');
+    setSelect.innerHTML = '<option value="">All sets</option>' + sets.map(([id, name]) => `<option value="${escapeAttribute(id)}">${escapeHtml(name)}</option>`).join('');
     raritySelect.value = rarities.includes(selectedRarity) ? selectedRarity : '';
     languageSelect.value = languages.includes(selectedLanguage) ? selectedLanguage : '';
+    setSelect.value = sets.some(([id]) => id === selectedSet) ? selectedSet : '';
   }
 
   function cardTile(card) {
@@ -298,23 +376,24 @@
     const wished = cardWished(card.id);
     const missing = state.view === 'missing' && !owned;
     const rarity = card.rarity || 'Rarity not listed';
-    const number = card.number ? `#${card.number}` : 'No. unavailable';
+    const setNumber = cardSetNumber(card);
+    const number = setNumber || 'No. unavailable';
     const setName = card.set?.name || 'Set unavailable';
-    const variantKeys = pricesFor(card);
-    const mainVariant = variantKeys[0] || 'normal';
+    const setLogo = card.set?.images?.logo;
+    const mainVariant = primaryVariant(card);
     const art = card.images?.large || card.images?.small;
     const verified = card.name && card.set?.name && card.number;
     const market = cardPrice(card, mainVariant);
     const favorite = isFavorite(card.id);
     const tags = [isPromotional(card) ? 'PROMO' : '', isStamped(card) ? 'STAMPED' : ''].filter(Boolean);
     return `<article class="card-tile ${rarityClass(card)}">
-      <button class="card-open" type="button" data-action="details" data-card-id="${escapeHtml(card.id)}" aria-label="View ${escapeHtml(card.name)}, ${escapeHtml(setName)}, number ${escapeHtml(card.number || 'unknown')} details">
+      <button class="card-open" type="button" data-action="details" data-card-id="${escapeHtml(card.id)}" aria-label="View ${escapeHtml(card.name)}, ${escapeHtml(setName)}, number ${escapeHtml(setNumber || 'unknown')} details">
       <span class="card-art-wrap">
         ${owned ? `<span class="tile-mark">${owned} OWNED</span>` : missing ? '<span class="tile-mark missing-mark">MISSING</span>' : wished ? '<span class="tile-mark wish-mark">WISHLIST</span>' : ''}
         ${art ? `<img class="card-art" src="${escapeHtml(art)}" alt="${escapeHtml(card.name)} — ${escapeHtml(setName)}" loading="lazy" decoding="async">` : '<span class="no-art" role="img" aria-label="Card artwork unavailable">L</span>'}
       </span>
       <span class="tile-body">
-        <span class="tile-set" title="${escapeHtml(setName)}">${escapeHtml(setName)}</span>
+        <span class="tile-set" title="${escapeHtml(setName)}"><span class="tile-set-name">${escapeHtml(setName)}</span>${setLogo ? `<img class="tile-set-logo" src="${escapeAttribute(setLogo)}" alt="${escapeAttribute(setName)} logo" loading="lazy">` : ''}</span>
         <span class="tile-title" title="${escapeHtml(card.name)}">${escapeHtml(card.name)}</span>
         <span class="tile-subline"><span>${escapeHtml(number)}</span><span>${escapeHtml(rarity)}</span></span>
         <span class="tile-price-row">${statusForPrice(card, mainVariant)}</span>
@@ -344,10 +423,10 @@
       if (state.view === 'missing' && cardOwned(card.id) > 0) return false;
       if (state.view === 'wishlist' && !cardWished(card.id)) return false;
       if (state.filters.rarity && card.rarity !== state.filters.rarity) return false;
+      if (state.filters.set && card.set?.id !== state.filters.set) return false;
       if (state.filters.language && cardLanguage(card) !== state.filters.language) return false;
       if (state.filters.type === 'promo' && !isPromotional(card)) return false;
       if (state.filters.type === 'stamp' && !isStamped(card)) return false;
-      if (state.filters.condition && !state.data.owned.some((item) => item.cardId === card.id && item.condition === state.filters.condition)) return false;
       if (query && ![card.name, card.number, card.rarity, card.set?.name, card.id, card.supertype, ...(card.subtypes || [])]
         .some((value) => String(value || '').toLowerCase().includes(query))) return false;
       return true;
@@ -357,8 +436,12 @@
       if (state.sort === 'name') return (a.name || '').localeCompare(b.name || '');
       if (state.sort === 'set') return (a.set?.name || '').localeCompare(b.set?.name || '');
       if (state.sort === 'price-high' || state.sort === 'price-low') {
-        const aPrice = Math.max(-1, ...Object.keys(a.tcgplayer?.prices || {}).map((key) => cardPrice(a, key) ?? -1));
-        const bPrice = Math.max(-1, ...Object.keys(b.tcgplayer?.prices || {}).map((key) => cardPrice(b, key) ?? -1));
+        const aPrice = cardPrice(a, primaryVariant(a));
+        const bPrice = cardPrice(b, primaryVariant(b));
+        if (aPrice === null || bPrice === null) {
+          if (aPrice === null && bPrice === null) return 0;
+          return aPrice === null ? 1 : -1;
+        }
         return state.sort === 'price-high' ? bPrice - aPrice : aPrice - bPrice;
       }
       const latestAdded = (card) => Math.max(-1, ...state.data.owned.filter((item) => item.cardId === card.id)
@@ -378,21 +461,25 @@
     $('#catalog-grid').hidden = !cards.length && !(state.loading && !state.cards.length);
     $('#empty-state').hidden = cards.length !== 0 || (state.loading && !state.cards.length);
     $('#result-count').textContent = state.cards.length
-      ? `${cards.length} ${cards.length === 1 ? 'print' : 'prints'}${state.view === 'all' ? ' in the Lucario catalog' : ` · ${state.view}`}`
+      ? `${cards.length} ${cards.length === 1 ? 'print' : 'prints'} for ${selectedPokemonName()}${state.view === 'all' ? '' : ` · ${state.view}`}`
       : 'No catalog records available';
     if (!cards.length) {
       if (!state.cards.length) {
-        $('#empty-title').textContent = state.loading ? 'Loading the card catalog' : 'Catalog unavailable';
+        $('#empty-title').textContent = state.loading
+          ? `Loading ${selectedPokemonName()} cards`
+          : state.catalogLoaded ? `No cards found for ${selectedPokemonName()}` : 'Catalog unavailable';
         $('#empty-copy').textContent = state.loading
           ? 'Connecting to the live Pokémon TCG catalog…'
-          : 'Check your connection and refresh. Your saved collection remains on this device.';
+          : state.catalogLoaded
+            ? 'No Pokémon TCG cards are currently listed for this Pokémon. Choose another Pokémon or try again later.'
+            : 'Check your connection and refresh. Your saved collection remains on this device.';
         $('#empty-action').textContent = 'Refresh catalog';
       } else {
         $('#empty-title').textContent = state.view === 'owned' ? 'Your collection is waiting' : state.view === 'missing' ? 'Every print is accounted for' : state.view === 'wishlist' ? 'Your wishlist is empty' : 'No matching cards';
         $('#empty-copy').textContent = state.view === 'all'
           ? 'Try a different search, or refresh the live card catalog.'
           : state.view === 'missing' ? 'You have marked every catalog print as owned.'
-            : 'Browse all Lucario prints to find a card to add here.';
+            : `Browse ${selectedPokemonName()} prints to find a card to add here.`;
         $('#empty-action').textContent = state.view === 'all' ? 'Refresh catalog' : 'Show all prints';
       }
     }
@@ -432,10 +519,70 @@
 
   function cacheCards(cards) {
     try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: new Date().toISOString(), cards }));
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        savedAt: new Date().toISOString(),
+        pokemon: state.selectedPokemon,
+        cards
+      }));
     } catch (error) {
       console.warn('Could not cache card catalog:', error);
     }
+  }
+
+  async function loadPokemonSpecies() {
+    let cachedSpecies = [];
+    try {
+      const cached = JSON.parse(localStorage.getItem(SPECIES_CACHE_KEY) || 'null');
+      if (Array.isArray(cached)) {
+        cachedSpecies = cached.filter((species) =>
+          species && typeof species.name === 'string' && typeof species.url === 'string');
+      }
+    } catch (error) {
+      console.warn('Could not read cached Pokémon list:', error);
+    }
+
+    try {
+      const response = await fetch(POKEDEX_API, { headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error(`National Pokédex returned HTTP ${response.status}`);
+      const payload = await response.json();
+      const results = Array.isArray(payload.pokemon_entries) ? payload.pokemon_entries
+        .filter((entry) => Number.isInteger(entry?.entry_number) && entry.entry_number > 0 &&
+          typeof entry.pokemon_species?.name === 'string' && typeof entry.pokemon_species?.url === 'string')
+        .map((entry) => ({
+          name: entry.pokemon_species.name,
+          url: entry.pokemon_species.url,
+          number: entry.entry_number
+        })) : [];
+      if (!results.length) {
+        throw new Error('Pokémon list returned an unexpected response.');
+      }
+      state.species = results;
+      try {
+        localStorage.setItem(SPECIES_CACHE_KEY, JSON.stringify(state.species));
+      } catch (error) {
+        console.warn('Could not cache Pokémon list:', error);
+      }
+    } catch (error) {
+      console.error('Could not load the full Pokémon list:', error);
+      state.species = cachedSpecies;
+      if (!state.species.length) {
+        state.species = [{ name: 'lucario', url: 'https://pokeapi.co/api/v2/pokemon-species/448/' }];
+        showToast('The National Pokédex could not be loaded. Check your connection and refresh to try again.');
+      }
+    }
+
+    const selector = $('#pokemon-filter');
+    selector.innerHTML = [...state.species]
+      .sort((a, b) => (pokedexNumber(a) ?? Number.MAX_SAFE_INTEGER) - (pokedexNumber(b) ?? Number.MAX_SAFE_INTEGER))
+      .map((species) => {
+        const number = pokedexNumber(species);
+        const label = number
+          ? `#${number} ${formatPokemonName(species.name)}`
+          : formatPokemonName(species.name);
+        return `<option value="${escapeAttribute(species.name)}">${escapeHtml(label)}</option>`;
+      }).join('');
+    if (!state.species.some((species) => species.name === state.selectedPokemon)) state.selectedPokemon = 'lucario';
+    selector.value = state.selectedPokemon;
   }
 
   function restoreCatalogCache() {
@@ -443,9 +590,11 @@
       const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
       if (cached && Array.isArray(cached.cards)) {
         state.cards = cached.cards;
+        state.selectedPokemon = typeof cached.pokemon === 'string' ? cached.pokemon : 'lucario';
+        state.catalogLoaded = true;
         renderCatalog();
         const date = cached.savedAt ? new Date(cached.savedAt).toLocaleDateString() : 'an earlier session';
-        $('#sync-status').textContent = `Offline catalog · cached ${date}`;
+        $('#sync-status').textContent = `Offline · ${formatPokemonName(state.selectedPokemon)} catalog cached ${date}`;
       }
     } catch (error) {
       console.warn('Could not read cached card catalog:', error);
@@ -454,11 +603,25 @@
 
   async function loadCatalog() {
     if (state.loading) return;
+    const pokemonId = $('#pokemon-filter').value || state.selectedPokemon;
+    const speciesName = pokemonSearchTerm(pokemonId);
+    const escapedName = speciesName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const pokemon = formatPokemonName(pokemonId);
+    const changingPokemon = pokemonId !== state.selectedPokemon;
+    state.selectedPokemon = pokemonId;
+    if (changingPokemon) {
+      state.cards = [];
+      state.catalogLoaded = false;
+      state.filters.rarity = '';
+      state.filters.language = '';
+      state.filters.set = '';
+    }
     state.loading = true;
     $('#refresh-button').disabled = true;
+    $('#pokemon-filter').disabled = true;
     $('#sidebar-sync-dot').classList.remove('live');
-    $('#sync-status').textContent = 'Loading live card catalog…';
-    $('#result-count').textContent = 'Connecting to card catalog…';
+    $('#sync-status').textContent = `Loading ${pokemon} cards…`;
+    $('#result-count').textContent = `Connecting to the ${pokemon} card catalog…`;
     if (!state.cards.length) renderCatalog();
     try {
       const cards = [];
@@ -466,7 +629,7 @@
       let totalCount = Infinity;
       while (cards.length < totalCount) {
         const url = new URL(API);
-        url.searchParams.set('q', 'name:Lucario');
+        url.searchParams.set('q', `name:"${escapedName}"`);
         url.searchParams.set('pageSize', '250');
         url.searchParams.set('page', String(page));
         url.searchParams.set('orderBy', '-set.releaseDate');
@@ -479,10 +642,12 @@
         if (payload.data.length === 0 || payload.data.length < 250) break;
         page += 1;
       }
-      if (cards.length === 0) throw new Error('The card catalog returned no Lucario prints.');
       state.cards = cards;
+      state.catalogLoaded = true;
       cacheCards(cards);
-      $('#sync-status').textContent = `Live · ${cards.length} prints from Pokémon TCG API`;
+      $('#sync-status').textContent = cards.length
+        ? `Live · ${cards.length} ${pokemon} prints from Pokémon TCG API`
+        : `Live · no Pokémon TCG cards listed for ${pokemon}`;
       $('#sidebar-sync-dot').classList.add('live');
       renderCatalog();
     } catch (error) {
@@ -494,14 +659,164 @@
       if (!state.cards.length) {
         $('#result-count').textContent = 'Could not connect to the live card catalog.';
         $('#empty-title').textContent = 'Catalog unavailable';
-        $('#empty-copy').textContent = 'Your saved collection is safe on this device. Check your connection and refresh to load Lucario cards.';
+        $('#empty-copy').textContent = `Your saved collection is safe on this device. Check your connection and refresh to load ${pokemon} cards.`;
         $('#empty-action').textContent = 'Try again';
       }
       showToast(state.cards.length ? 'Live catalog unavailable; showing cached data.' : 'Could not load the live catalog.');
     } finally {
       state.loading = false;
       $('#refresh-button').disabled = false;
+      $('#pokemon-filter').disabled = false;
       renderCatalog();
+    }
+  }
+
+  async function loadOcrLibrary() {
+    if (window.Tesseract) return window.Tesseract;
+    await new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('Could not load the on-device text recognition library.'));
+      document.head.append(script);
+    });
+    if (!window.Tesseract) throw new Error('The text recognition library did not initialize.');
+    return window.Tesseract;
+  }
+
+  function stopScannerCamera() {
+    if (state.scanWorker) {
+      state.scanWorker.terminate().catch((error) => console.warn('Could not stop text recognition worker cleanly:', error));
+      state.scanWorker = null;
+    }
+    if (state.cameraStream) {
+      state.cameraStream.getTracks().forEach((track) => track.stop());
+      state.cameraStream = null;
+    }
+    $('#scanner-video').srcObject = null;
+    $('#scanner-capture').disabled = true;
+  }
+
+  async function openScanner() {
+    $('#scanner-results').replaceChildren();
+    $('#scanner-status').textContent = 'Requesting camera access…';
+    $('#scanner-capture').disabled = true;
+    $('#scanner-dialog').showModal();
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      $('#scanner-status').textContent = 'Camera access requires HTTPS (or localhost) in a browser that supports camera capture.';
+      return;
+    }
+    try {
+      state.cameraStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      });
+      const video = $('#scanner-video');
+      video.srcObject = state.cameraStream;
+      await video.play();
+      $('#scanner-status').textContent = 'Center the card in the frame, then capture.';
+      $('#scanner-capture').disabled = false;
+    } catch (error) {
+      console.error('Could not start card scanner camera:', error);
+      $('#scanner-status').textContent = error.name === 'NotAllowedError'
+        ? 'Camera permission was denied. Allow camera access in your browser settings, then try again.'
+        : 'Could not start the camera. Check that it is available and try again.';
+    }
+  }
+
+  function findScannedPokemon(text) {
+    const normalize = (value) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/[^a-z0-9]/g, '');
+    const speciesByName = [...state.species]
+      .sort((a, b) => normalize(b.name).length - normalize(a.name).length);
+    for (const line of text.split(/\r?\n/).slice(0, 12)) {
+      const normalizedLine = normalize(line);
+      const match = speciesByName.find((species) => {
+        const name = normalize(species.name);
+        return name.length > 2 && normalizedLine.includes(name);
+      });
+      if (match) return match;
+    }
+    return null;
+  }
+
+  function renderScanResults(cards, species) {
+    const results = $('#scanner-results');
+    if (!cards.length) {
+      results.innerHTML = '<p class="scanner-no-results">No matching cards were found. Try a clearer photo with the card name in focus.</p>';
+      return;
+    }
+    results.innerHTML = `<h3>Possible matches for ${escapeHtml(formatPokemonName(species.name))}</h3>` +
+      cards.map((card) => {
+        const art = card.images?.small || card.images?.large;
+        return `<button class="scanner-result" type="button" data-scan-card-id="${escapeAttribute(card.id)}">
+          ${art ? `<img src="${escapeAttribute(art)}" alt="" loading="lazy">` : '<span class="scanner-result-no-art">?</span>'}
+          <span><strong>${escapeHtml(card.name || 'Unknown card')}</strong><span>${escapeHtml(card.set?.name || 'Set unavailable')} · ${escapeHtml(cardSetNumber(card) || '?')}</span><span>${escapeHtml(card.rarity || 'Rarity unavailable')}</span></span>
+          <span class="scanner-result-arrow">›</span>
+        </button>`;
+      }).join('');
+  }
+
+  async function identifyCapturedCard() {
+    const video = $('#scanner-video');
+    if (!video.videoWidth || !video.videoHeight) {
+      $('#scanner-status').textContent = 'Camera is still starting. Wait a moment and try again.';
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    const scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    $('#scanner-capture').disabled = true;
+    $('#scanner-results').replaceChildren();
+    $('#scanner-status').textContent = 'Reading the card name on this device…';
+    let worker;
+    try {
+      const Tesseract = await loadOcrLibrary();
+      worker = await Tesseract.createWorker('eng', 1, {
+        logger: (message) => {
+          if (message.status === 'recognizing text') {
+            $('#scanner-status').textContent = `Reading card text… ${Math.round(message.progress * 100)}%`;
+          }
+        }
+      });
+      state.scanWorker = worker;
+      const { data } = await worker.recognize(canvas);
+      if (!$('#scanner-dialog').open) return;
+      const species = findScannedPokemon(data.text || '');
+      if (!species) {
+        $('#scanner-status').textContent = 'Could not confidently read a Pokémon name from the top of the card.';
+        $('#scanner-results').innerHTML = '<p class="scanner-no-results">Try again with the card name sharp, upright, and free of glare.</p>';
+        return;
+      }
+      $('#scanner-status').textContent = `Searching the live card catalog for ${formatPokemonName(species.name)}…`;
+      const searchName = pokemonSearchTerm(species.name).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const url = new URL(API);
+      url.searchParams.set('q', `name:"${searchName}"`);
+      url.searchParams.set('pageSize', '30');
+      url.searchParams.set('orderBy', '-set.releaseDate');
+      const response = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error(`Card API returned HTTP ${response.status}`);
+      const payload = await response.json();
+      if (!Array.isArray(payload.data)) throw new Error('Card API returned an unexpected response.');
+      state.scannedCards = payload.data;
+      $('#scanner-status').textContent = payload.data.length
+        ? 'Choose the exact print that matches your card.'
+        : `No catalog entries found for ${formatPokemonName(species.name)}.`;
+      renderScanResults(payload.data, species);
+    } catch (error) {
+      if ($('#scanner-dialog').open) {
+        console.error('Could not identify scanned card:', error);
+        $('#scanner-status').textContent = 'Card identification failed. Check your connection and try again.';
+        $('#scanner-results').innerHTML = `<p class="scanner-no-results">${escapeHtml(error.message || 'An unexpected error occurred.')}</p>`;
+      }
+    } finally {
+      if (worker && state.scanWorker === worker) {
+        await worker.terminate();
+        state.scanWorker = null;
+      }
+      if ($('#scanner-dialog').open && state.cameraStream) $('#scanner-capture').disabled = false;
     }
   }
 
@@ -550,7 +865,7 @@
   function openPricesDialog(card) {
     state.pricesCard = card;
     $('#prices-title').textContent = `Compare ${card.name} prices`;
-    $('#prices-card-details').textContent = `${card.set?.name || 'Set unavailable'} · #${card.number || '?'} · ${card.rarity || 'Rarity not listed'}`;
+    $('#prices-card-details').textContent = `${card.set?.name || 'Set unavailable'} · ${cardSetNumber(card) || '?'} · ${card.rarity || 'Rarity not listed'}`;
     const keys = [...new Set([...Object.keys(card.tcgplayer?.prices || {}), 'normal'])];
     $('#prices-variant').innerHTML = keys.map((key) =>
       `<option value="${escapeHtml(key)}">${escapeHtml(displayVariant(key))}</option>`
@@ -575,7 +890,7 @@
     }).join('') : '<div class="empty-inline">Not in your collection yet. Add it to record condition, acquisition price, and notes.</div>';
     $('#detail-content').innerHTML = `<div class="detail-hero">
       <div class="detail-art-wrap">${art ? `<img class="detail-art" src="${escapeAttribute(art)}" alt="${escapeAttribute(card.name)} card artwork">` : '<div class="no-art">L</div>'}</div>
-      <div class="detail-meta"><div class="dialog-eyebrow">${escapeHtml(card.rarity || 'CARD DETAILS')}</div><h2>${escapeHtml(card.name)}</h2><p>${escapeHtml(card.set?.name || 'Set unavailable')} · #${escapeHtml(card.number || '?')}</p>
+      <div class="detail-meta"><div class="dialog-eyebrow">${escapeHtml(card.rarity || 'CARD DETAILS')}</div><h2>${escapeHtml(card.name)}</h2><p>${escapeHtml(card.set?.name || 'Set unavailable')} · ${escapeHtml(cardSetNumber(card) || '?')}</p>
         <div class="detail-metrics"><div class="detail-metric"><span>MARKET ESTIMATE</span><strong>${market === null ? 'Unavailable' : formatMoney(market)}</strong></div><div class="detail-metric"><span>COLLECTION</span><strong>${ownedEntries.reduce((sum, { item }) => sum + item.copies.length, 0)} owned</strong></div></div>
       </div></div>
       <div class="detail-actions"><button class="button button-primary" type="button" data-action="detail-add" data-card-id="${escapeAttribute(card.id)}">＋ Add to collection</button><button class="button button-secondary" type="button" data-action="detail-price" data-card-id="${escapeAttribute(card.id)}">Compare prices</button><button class="button button-secondary" type="button" data-action="detail-wishlist" data-card-id="${escapeAttribute(card.id)}">${cardWished(card.id) ? '♥ On wishlist' : '♡ Add to wishlist'}</button></div>
@@ -588,7 +903,7 @@
     state.editingGroupIndex = action === 'edit' ? groupIndex : null;
     $('#dialog-action').value = action;
     $('#dialog-card-id').value = card.id;
-    $('#dialog-card-name').textContent = `${card.name} · ${card.set?.name || 'Set unavailable'} · #${card.number || '?'}`;
+    $('#dialog-card-name').textContent = `${card.name} · ${card.set?.name || 'Set unavailable'} · ${cardSetNumber(card) || '?'}`;
     const editing = action === 'edit' && Number.isInteger(groupIndex) && state.data.owned[groupIndex];
     $('#dialog-eyebrow').textContent = action === 'wishlist' ? 'WISHLIST' : editing ? 'EDIT COLLECTION ENTRY' : 'COLLECTION';
     $('#dialog-title').textContent = action === 'wishlist' ? 'Add to wishlist' : editing ? 'Edit card details' : 'Add to collection';
@@ -895,8 +1210,22 @@
       renderCatalog();
     });
     $('#sort-select').addEventListener('change', (event) => { state.sort = event.target.value; renderCatalog(); });
+    $('#pokemon-filter').addEventListener('change', () => {
+      state.selectedPokemon = $('#pokemon-filter').value;
+      state.cards = [];
+      state.catalogLoaded = false;
+      state.query = '';
+      $('#search-input').value = '';
+      $('#collection-search').value = '';
+      state.filters.rarity = '';
+      state.filters.language = '';
+      state.filters.set = '';
+      state.filters.type = '';
+      renderCatalog();
+      loadCatalog();
+    });
+    $('#set-filter').addEventListener('change', (event) => { state.filters.set = event.target.value; renderCatalog(); });
     $('#rarity-filter').addEventListener('change', (event) => { state.filters.rarity = event.target.value; renderCatalog(); });
-    $('#condition-filter').addEventListener('change', (event) => { state.filters.condition = event.target.value; renderCatalog(); });
     $('#language-filter').addEventListener('change', (event) => { state.filters.language = event.target.value; renderCatalog(); });
     $('#type-filter').addEventListener('change', (event) => { state.filters.type = event.target.value; renderCatalog(); });
     $('#refresh-button').addEventListener('click', loadCatalog);
@@ -906,6 +1235,16 @@
     $('#import-button').addEventListener('click', () => $('#import-file').click());
     $('#import-file').addEventListener('change', (event) => importDataFile(event.target.files[0]));
     $('#mobile-more-button').addEventListener('click', exportData);
+    $('#scan-card-button').addEventListener('click', openScanner);
+    $('#scanner-capture').addEventListener('click', identifyCapturedCard);
+    $('#scanner-dialog').addEventListener('close', stopScannerCamera);
+    $('#scanner-results').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-scan-card-id]');
+      const card = button ? currentCard(button.dataset.scanCardId) : null;
+      if (!card) return;
+      $('#scanner-dialog').close();
+      openCardDialog(card, 'owned');
+    });
     $('#empty-action').addEventListener('click', () => {
       if (state.view !== 'all' && state.cards.length) setView('all');
       else loadCatalog();
@@ -1014,5 +1353,8 @@
   restoreCatalogCache();
   bindEvents();
   renderCatalog();
-  loadCatalog();
+  loadPokemonSpecies().then(() => {
+    renderCatalog();
+    loadCatalog();
+  });
 })();

@@ -5,17 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#101722">
     <meta name="description" content="Aura Vault — a private Pokémon TCG collection vault.">
-    <title>Aura Vault — Lucario Collection</title>
+    <title>Aura Vault — Pokémon Collection</title>
+    <link rel="icon" type="image/png" href="aura-vault-logo.png">
+    <link rel="apple-touch-icon" href="aura-vault-logo.png">
     <link rel="preconnect" href="https://api.pokemontcg.io">
     <link rel="preconnect" href="https://images.pokemontcg.io">
     <link rel="stylesheet" href="styles.css">
-    <script src="app.js?v=4afee1c" defer></script>
+    <script src="app.js?v=card-scanner-1" defer></script>
   </head>
   <body>
     <div class="app-shell">
       <aside class="sidebar" aria-label="Primary navigation">
         <a class="brand" href="#home" data-nav="home" aria-label="Aura Vault home">
-          <span class="brand-mark" aria-hidden="true"><span></span></span>
+          <img class="brand-mark" src="aura-vault-logo.png" alt="" aria-hidden="true">
           <span class="brand-name">AURA<span>VAULT</span></span>
         </a>
         <div class="sidebar-label">COLLECTOR SPACE</div>
@@ -28,7 +30,7 @@
         <div class="sidebar-label">YOUR FOCUS</div>
         <div class="focus-card">
           <span class="focus-orb">✦</span>
-          <div><strong>Lucario</strong><span>Pokémon · #0448</span></div>
+          <div><strong id="focus-pokemon">Lucario</strong><span id="focus-pokemon-number">Pokémon · #448</span></div>
           <span class="focus-dot"></span>
         </div>
         <div class="sidebar-spacer"></div>
@@ -40,7 +42,7 @@
 
       <div class="app-main">
         <header class="topbar">
-          <a class="mobile-brand" href="#home" data-nav="home"><span class="brand-mark" aria-hidden="true"><span></span></span><span>AURA<span>VAULT</span></span></a>
+          <a class="mobile-brand" href="#home" data-nav="home"><img class="brand-mark" src="aura-vault-logo.png" alt="" aria-hidden="true"><span>AURA<span>VAULT</span></span></a>
           <div class="breadcrumb"><span>YOUR VAULT</span><span class="breadcrumb-slash">/</span><strong id="page-label">OVERVIEW</strong></div>
           <div class="topbar-actions">
             <label class="header-search">
@@ -69,8 +71,8 @@
             <div class="hero-panel">
               <div class="hero-info">
                 <div class="hero-label"><span class="hero-label-icon">✦</span> FEATURED COLLECTION</div>
-                <h2>Lucario</h2>
-                <p>Aura Pokémon <span class="hero-separator">·</span> National Pokédex #0448</p>
+                <h2 id="featured-pokemon">Lucario</h2>
+                <p id="featured-pokemon-meta">Pokémon card collection <span class="hero-separator">·</span> National Pokédex #448</p>
                 <div class="hero-progress-caption"><span>COLLECTION COMPLETION</span><strong id="progress-percent">—</strong></div>
                 <div class="progress-track"><span id="progress-bar"></span></div>
                 <div class="hero-progress-foot"><span id="progress-label">Loading your collection</span><span id="total-count">0 prints</span></div>
@@ -79,7 +81,7 @@
               <div class="hero-visual" aria-hidden="true">
                 <div class="hero-ring ring-one"></div><div class="hero-ring ring-two"></div><div class="hero-glow"></div>
                 <div class="hero-symbol">L</div>
-                <div class="hero-art-caption">AURA<br>NO. 0448</div>
+                <div class="hero-art-caption" id="hero-pokedex-label">AURA<br>NO. 0448</div>
               </div>
               <div class="hero-index">AV <span>001</span></div>
             </div>
@@ -93,7 +95,7 @@
               <article class="stat-card">
                 <div class="stat-label"><span>UNIQUE PRINTS</span><span class="stat-symbol blue">▦</span></div>
                 <div class="stat-value"><span id="owned-count">0</span><small id="total-count-stat">of —</small></div>
-                <div class="stat-meta"><span>Lucario cards owned</span><span class="mini-trend">↗</span></div>
+                <div class="stat-meta"><span id="owned-count-label">Selected Pokémon cards owned</span><span class="mini-trend">↗</span></div>
               </article>
               <article class="stat-card">
                 <div class="stat-label"><span>WISHLIST VALUE</span><span class="stat-symbol rare">♡</span></div>
@@ -142,8 +144,11 @@
 
           <section class="collection-page page-section" id="collection" aria-labelledby="catalog-title">
             <div class="collection-heading">
-              <div><div class="eyebrow"><span class="eyebrow-spark">✦</span> THE CARD INDEX</div><h1 id="catalog-title">Your collection<span class="title-period">.</span></h1><p>Explore every print, finish, and card in the Lucario catalog.</p></div>
-              <button class="button button-primary" id="collection-add-button" type="button"><span>＋</span> Add a card</button>
+              <div><div class="eyebrow"><span class="eyebrow-spark">✦</span> THE CARD INDEX</div><h1 id="catalog-title">Your collection<span class="title-period">.</span></h1><p>Browse cards by Pokémon and set. Your card collection stays saved on this device.</p></div>
+              <div class="collection-heading-actions">
+                <button class="button button-secondary" id="scan-card-button" type="button"><span>▣</span> Scan card</button>
+                <button class="button button-primary" id="collection-add-button" type="button"><span>＋</span> Add a card</button>
+              </div>
             </div>
             <div class="collection-toolbar">
               <div class="tabs" role="tablist" aria-label="Card list">
@@ -160,8 +165,9 @@
                 <input id="collection-search" type="search" placeholder="Search Pokémon, name, set, or card number…" autocomplete="off" aria-label="Search card name, set, number, or Pokémon">
               </div>
               <div class="filter-controls">
+                <label class="filter-select"><span>POKÉMON</span><select id="pokemon-filter" aria-label="Select Pokémon"><option value="lucario">Loading Pokémon…</option></select></label>
+                <label class="filter-select"><span>SET / COLLECTION</span><select id="set-filter" aria-label="Filter by card set"><option value="">All sets</option></select></label>
                 <label class="filter-select"><span>RARITY</span><select id="rarity-filter" aria-label="Filter by rarity"><option value="">All rarities</option></select></label>
-                <label class="filter-select"><span>CONDITION</span><select id="condition-filter" aria-label="Filter by condition"><option value="">All conditions</option><option>Near Mint</option><option>Lightly Played</option><option>Moderately Played</option><option>Heavily Played</option><option>Damaged</option></select></label>
                 <label class="filter-select"><span>LANGUAGE</span><select id="language-filter" aria-label="Filter by language"><option value="">All languages</option></select></label>
                 <label class="filter-select"><span>TYPE</span><select id="type-filter" aria-label="Filter promotional cards"><option value="">All prints</option><option value="promo">Promotional</option><option value="stamp">Stamped</option></select></label>
                 <label class="filter-select sort-filter"><span>SORT</span><select id="sort-select" aria-label="Sort cards"><option value="date-added">Recently added</option><option value="name">Name</option><option value="set">Set</option><option value="price-high">Value: high to low</option><option value="price-low">Value: low to high</option></select></label>
@@ -171,7 +177,7 @@
             <div id="catalog-grid" class="card-grid" aria-live="polite"></div>
             <div id="empty-state" class="empty-state" hidden>
               <div class="empty-mark">✦</div><h3 id="empty-title">Your vault awaits</h3>
-              <p id="empty-copy">Try a different search, or add a Lucario print to your collection.</p>
+              <p id="empty-copy">Try another Pokémon or add a card to your collection.</p>
               <button id="empty-action" class="button button-secondary" type="button">Show all prints</button>
             </div>
           </section>
@@ -209,6 +215,22 @@
         <div class="dialog-market"><span>Current market estimate</span><strong id="dialog-market-value">Unavailable</strong></div>
         <button id="dialog-submit" class="button button-primary dialog-submit" type="submit">Add card</button>
       </form>
+    </dialog>
+    <dialog id="scanner-dialog" class="app-dialog scanner-dialog">
+      <div class="scanner-dialog-content">
+        <button class="dialog-close" type="button" data-close aria-label="Close card scanner">×</button>
+        <div class="dialog-eyebrow">CAMERA CARD SCANNER</div>
+        <h2>Identify a card</h2>
+        <p class="scanner-intro">Fit one card inside the frame, with its name clearly visible. The image is analyzed on this device and is not saved.</p>
+        <div class="scanner-camera">
+          <video id="scanner-video" autoplay muted playsinline aria-label="Live camera preview"></video>
+          <div class="scanner-frame" aria-hidden="true"></div>
+        </div>
+        <p id="scanner-status" class="scanner-status" role="status" aria-live="polite">Starting camera…</p>
+        <button id="scanner-capture" class="button button-primary dialog-submit" type="button" disabled>Capture & identify</button>
+        <div id="scanner-results" class="scanner-results" aria-live="polite"></div>
+        <p class="scanner-disclaimer">Identification uses on-device text recognition and the live Pokémon TCG catalog. Results may be incomplete or incorrect; confirm the exact card, set, and number before adding it.</p>
+      </div>
     </dialog>
     <dialog id="detail-dialog" class="app-dialog detail-dialog">
       <div class="detail-dialog-content">

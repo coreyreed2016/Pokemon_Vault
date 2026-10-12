@@ -19,6 +19,28 @@ main{max-width:1660px;margin:0 auto;padding:38px clamp(22px,4vw,58px) 24px}.page
 @media(max-width:600px){body{font-size:13px}.topbar{padding:0 13px;gap:8px}.topbar-actions{gap:6px}.header-search{height:36px;width:clamp(100px,31vw,175px);padding:0 8px;gap:6px}.header-search>span{font-size:17px}.header-search input{font-size:11px}.icon-button,.avatar-button{width:34px;height:34px;border-radius:9px;font-size:15px}.avatar-button{display:none}.mobile-brand{gap:6px}.mobile-brand .brand-mark{width:28px;height:28px}.mobile-brand>span:last-child{font-size:10px;letter-spacing:.08em}main{padding:23px 13px 20px}.welcome-row,.collection-heading{align-items:flex-start;flex-direction:column;gap:15px;margin-bottom:21px}.welcome-row .button,.collection-heading .button{align-self:stretch}.eyebrow{font-size:9px}.welcome-copy,.collection-heading p{font-size:12px}h1{font-size:28px}.hero-panel{grid-template-columns:minmax(0,1fr);min-height:0}.hero-info{padding:23px 21px 24px}.hero-info h2{font-size:34px}.hero-info>p{margin-bottom:22px}.hero-visual{position:absolute;right:-38px;top:0;width:170px;height:190px;min-height:0;opacity:.32;pointer-events:none}.hero-symbol{font-size:115px}.hero-ring.ring-one{width:150px;height:105px}.hero-ring.ring-two{width:115px;height:165px}.hero-art-caption{display:none}.hero-index{top:13px;right:15px}.stats-grid{gap:9px;margin-bottom:29px}.stat-card{padding:13px 12px;border-radius:13px}.stat-label{font-size:8px;letter-spacing:.08em}.stat-symbol{width:24px;height:24px;border-radius:7px}.stat-value{font-size:22px;margin:10px 0 8px}.stat-value small{font-size:9px}.stat-meta{font-size:9px;flex-wrap:wrap}.mini-trend{font-size:8px}.section-heading h2{font-size:18px}.section-heading .eyebrow{font-size:8px}.dashboard-lower{grid-template-columns:minmax(0,1fr);gap:5px}.spotlight-grid{gap:10px}.small-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.collection-toolbar{align-items:stretch;flex-direction:column;margin:23px 0 12px}.tabs{width:100%;justify-content:flex-start}.tab{padding:8px 10px}.refresh-button{align-self:flex-start}.filter-panel{padding:11px}.filter-controls{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.filter-search{margin-bottom:12px}.filter-select select{padding:9px 7px;font-size:10px}.results-line{font-size:10px}.live-indicator{font-size:8px}.card-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.data-note{padding:13px}.data-note p{font-size:10px}footer{font-size:8px;letter-spacing:.07em;gap:8px;padding-left:13px;padding-right:13px}.app-dialog form,.detail-dialog-content,.prices-dialog-content{padding:24px 19px}.app-dialog h2{font-size:22px}.toast{bottom:80px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
+.brand-mark{object-fit:contain;background:none;box-shadow:none}
+.brand-mark:before,.brand-mark:after{content:none;display:none}
+.collection-heading-actions{display:flex;gap:9px;flex-wrap:wrap}
+.scanner-dialog{width:min(580px,calc(100vw - 24px))}
+.scanner-dialog-content{position:relative;padding:29px}
+.scanner-intro,.scanner-disclaimer{font-size:11px;line-height:1.6;color:var(--muted)}
+.scanner-camera{position:relative;overflow:hidden;display:grid;place-items:center;width:100%;aspect-ratio:4/3;margin:17px 0 10px;border:1px solid var(--line-strong);border-radius:14px;background:#03070c}
+.scanner-camera video{width:100%;height:100%;object-fit:contain}
+.scanner-frame{position:absolute;inset:7% 17%;border:2px solid rgba(243,198,106,.85);border-radius:15px;box-shadow:0 0 0 999px rgba(3,7,13,.24);pointer-events:none}
+.scanner-status{min-height:20px;margin:9px 0;color:var(--gold2);font-size:11px}
+.scanner-results{display:grid;gap:8px;margin-top:13px}
+.scanner-results h3{margin:4px 0;font-size:14px}
+.scanner-result{display:grid;grid-template-columns:58px minmax(0,1fr) auto;align-items:center;gap:13px;width:100%;padding:11px;border:1px solid var(--line);border-radius:11px;background:rgba(255,255,255,.035);text-align:left}
+.scanner-result img,.scanner-result-no-art{width:58px;height:80px;object-fit:contain;border-radius:5px;background:rgba(255,255,255,.04)}
+.scanner-result span span,.scanner-result strong{display:block}
+.scanner-result strong{font-size:13px}
+.scanner-result span span{margin-top:3px;color:var(--muted);font-size:11px}
+.scanner-result-arrow{color:var(--gold);font-size:22px}
+.scanner-no-results{margin:2px 0;color:var(--muted);font-size:11px}
+.scanner-disclaimer{margin:15px 0 0;font-size:9px}
+@media(max-width:600px){.collection-heading-actions{width:100%;gap:8px}.collection-heading-actions .button{flex:1;padding:10px 8px;font-size:11px}.scanner-dialog-content{padding:24px 17px}.scanner-frame{inset:7% 15%}.scanner-result{grid-template-columns:52px minmax(0,1fr) auto;gap:10px;padding:9px}.scanner-result img,.scanner-result-no-art{width:52px;height:72px}.scanner-result strong{font-size:12px}.scanner-result span span{font-size:10px}}
+
 /* Aura Vault card-art cleanup: remove the silver/gray picture frame */
 .card-art-wrap,
 .spotlight-art {
@@ -100,6 +122,11 @@ img.card-art {
 .detail-entry h3 { margin: 0 0 10px; font-size: 13px; overflow-wrap: anywhere; }
 .detail-entry > p { margin: 10px 0 0; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .detail-entry .detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+@media(min-width:851px) {
+  .detail-hero { grid-template-columns: minmax(175px, 285px) minmax(0, 1fr); }
+  .detail-art-wrap { max-height: 420px; }
+  .detail-art-wrap .detail-art { max-height: 399px; }
+}
 @media(max-width:600px) {
   .detail-dialog-content { padding: 21px 16px; }
   .detail-hero { grid-template-columns: minmax(105px, 135px) minmax(0, 1fr); gap: 12px; margin-right: 18px; }
@@ -141,6 +168,11 @@ img.card-art {
   text-align: left;
 }
 .card-tile .tile-set {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  min-width: 0;
   overflow: hidden;
   color: var(--muted);
   font-size: 9px;
@@ -148,6 +180,22 @@ img.card-art {
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.card-tile .tile-set-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card-tile .tile-set-logo {
+  display: block;
+  flex: none;
+  width: auto;
+  max-width: 42%;
+  height: 18px;
+  object-fit: contain;
+  border: 0;
+  background: transparent;
 }
 .card-tile .tile-title {
   color: var(--text);
