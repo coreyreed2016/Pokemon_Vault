@@ -563,20 +563,6 @@
     const ownedEntries = state.data.owned.map((item, index) => ({ item, index })).filter(({ item }) => item.cardId === card.id);
     const market = cardPrice(card, pricesFor(card)[0] || 'normal');
     const art = card.images?.large || card.images?.small;
-    const alternatePrints = state.cards
-      .filter((candidate) => candidate.id !== card.id && candidate.name === card.name)
-      .sort((a, b) => (b.set?.releaseDate || '').localeCompare(a.set?.releaseDate || ''));
-    const alternateMarkup = alternatePrints.length
-      ? `<div class="alternate-print-grid">${alternatePrints.map((print) => {
-        const printArt = print.images?.small || print.images?.large;
-        const printPrice = cardPrice(print, pricesFor(print)[0] || 'normal');
-        return `<button class="alternate-print ${rarityClass(print)}" type="button" data-action="alternate-print" data-card-id="${escapeAttribute(print.id)}">
-          <span class="alternate-print-art">${printArt ? `<img class="card-art" src="${escapeAttribute(printArt)}" alt="" loading="lazy">` : '<span class="no-art">L</span>'}</span>
-          <span class="alternate-print-info"><strong>${escapeHtml(print.rarity || 'Rarity not listed')}</strong><span>${escapeHtml(print.set?.name || 'Set unavailable')} · #${escapeHtml(print.number || '?')}</span><span class="alternate-print-price">${printPrice === null ? 'Price unavailable' : formatMoney(printPrice)}</span></span>
-          <span class="alternate-print-arrow" aria-hidden="true">↗</span>
-        </button>`;
-      }).join('')}</div>`
-      : '<div class="empty-inline">No additional printings of this exact card name are listed in the current catalog.</div>';
     const entryMarkup = ownedEntries.length ? ownedEntries.map(({ item, index }) => {
       const paid = item.copies.reduce((sum, copy) => sum + Number(copy.paid || 0), 0);
       const entryPrice = cardPrice(card, keyForVariant(item.variant));
@@ -593,9 +579,6 @@
         <div class="detail-metrics"><div class="detail-metric"><span>MARKET ESTIMATE</span><strong>${market === null ? 'Unavailable' : formatMoney(market)}</strong></div><div class="detail-metric"><span>COLLECTION</span><strong>${ownedEntries.reduce((sum, { item }) => sum + item.copies.length, 0)} owned</strong></div></div>
       </div></div>
       <div class="detail-actions"><button class="button button-primary" type="button" data-action="detail-add" data-card-id="${escapeAttribute(card.id)}">＋ Add to collection</button><button class="button button-secondary" type="button" data-action="detail-price" data-card-id="${escapeAttribute(card.id)}">Compare prices</button><button class="button button-secondary" type="button" data-action="detail-wishlist" data-card-id="${escapeAttribute(card.id)}">${cardWished(card.id) ? '♥ On wishlist' : '♡ Add to wishlist'}</button></div>
-      <h3 class="detail-section-title">Other printings & rarities <span class="detail-variant-count">${alternatePrints.length}</span></h3>
-      <p class="detail-variant-note">Same card name across the available Lucario catalog. Each printing shows its listed rarity, including Secret Rare when available.</p>
-      ${alternateMarkup}
       <h3 class="detail-section-title">Your copies</h3>${entryMarkup}`;
     $('#detail-dialog').showModal();
   }
@@ -953,9 +936,7 @@
       if (!button) return;
       const card = currentCard(button.dataset.cardId);
       if (!card) return;
-      if (button.dataset.action === 'alternate-print') {
-        openDetailsDialog(card);
-      } else if (button.dataset.action === 'detail-price') {
+      if (button.dataset.action === 'detail-price') {
         $('#detail-dialog').close();
         openPricesDialog(card);
       } else if (button.dataset.action === 'detail-add') {

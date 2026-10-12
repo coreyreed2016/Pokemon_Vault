@@ -16,7 +16,7 @@ A static, mobile-first Pokémon TCG collection tracker with a premium dark gamin
 
 ## Collection details
 
-Owned entries track print treatment, condition, per-copy purchase price, and an optional collector note. Card details show other catalog entries with the exact same card name as alternate printings, including their catalog rarity (for example, Secret Rare), set, number, and available estimate. This related-print list is limited to records in the currently loaded Lucario catalog and is not a guarantee that every regional, stamped, or promotional variant is present. Cards can be edited or deleted from their detail view. Adding an identical card/treatment/condition asks for confirmation before recording another copy. Adding a priced purchase to the collection can count it toward the current calendar month's $50 budget; the separate budget action is available for purchases added without collection entries. Favorites are saved in the existing local data record. The dashboard shows recently added cards, featured favorites, wishlist highlights, and owned progress by set.
+Owned entries track print treatment, condition, per-copy purchase price, and an optional collector note. Cards can be edited or deleted from their detail view. Adding an identical card/treatment/condition asks for confirmation before recording another copy. Adding a priced purchase to the collection can count it toward the current calendar month's $50 budget; the separate budget action is available for purchases added without collection entries. Favorites are saved in the existing local data record. The dashboard shows recently added cards, featured favorites, wishlist highlights, and owned progress by set.
 
 ## Expanding beyond Lucario
 
