@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#101722">
+    <meta name="description" content="Aura Vault — a private Pokémon TCG collection vault.">
+    <title>Aura Vault — Lucario Collection</title>
+    <link rel="preconnect" href="https://api.pokemontcg.io">
+    <link rel="preconnect" href="https://images.pokemontcg.io">
+    <link rel="stylesheet" href="styles.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Primary navigation">
+        <a class="brand" href="#home" data-nav="home" aria-label="Aura Vault home">
+          <span class="brand-mark" aria-hidden="true"><span></span></span>
+          <span class="brand-name">AURA<span>VAULT</span></span>
+        </a>
+        <div class="sidebar-label">COLLECTOR SPACE</div>
+        <nav class="side-nav">
+          <button class="nav-item active" type="button" data-nav="home"><span class="nav-icon">⌂</span>Overview</button>
+          <button class="nav-item" type="button" data-nav="collection"><span class="nav-icon">▦</span>Collection <span id="nav-owned-count" class="nav-count">0</span></button>
+          <button class="nav-item" type="button" data-nav="wishlist"><span class="nav-icon">♡</span>Wishlist <span id="nav-wishlist-count" class="nav-count">0</span></button>
+        </nav>
+        <div class="sidebar-rule"></div>
+        <div class="sidebar-label">YOUR FOCUS</div>
+        <div class="focus-card">
+          <span class="focus-orb">✦</span>
+          <div><strong>Lucario</strong><span>Pokémon · #0448</span></div>
+          <span class="focus-dot"></span>
+        </div>
+        <div class="sidebar-spacer"></div>
+        <div class="sidebar-bottom">
+          <div class="sync-line"><span id="sidebar-sync-dot"></span><span id="sync-status" role="status">Connecting to catalog…</span></div>
+          <div class="privacy-note">◈ &nbsp;Your collection is stored on this device</div>
+        </div>
+      </aside>
+
+      <div class="app-main">
+        <header class="topbar">
+          <a class="mobile-brand" href="#home" data-nav="home"><span class="brand-mark" aria-hidden="true"><span></span></span><span>AURA<span>VAULT</span></span></a>
+          <div class="breadcrumb"><span>YOUR VAULT</span><span class="breadcrumb-slash">/</span><strong id="page-label">OVERVIEW</strong></div>
+          <div class="topbar-actions">
+            <label class="header-search">
+              <span aria-hidden="true">⌕</span>
+              <input id="search-input" type="search" placeholder="Search your cards…" autocomplete="off" aria-label="Search Pokémon cards">
+              <kbd>⌘ K</kbd>
+            </label>
+            <button class="icon-button" id="import-button" type="button" title="Import a collection backup" aria-label="Import collection backup">⇧</button>
+            <input id="import-file" type="file" accept="application/json,.json" hidden>
+            <button class="icon-button" id="export-button" type="button" title="Export your collection backup" aria-label="Export collection backup">⇩</button>
+            <button class="avatar-button" type="button" aria-label="Your local collector profile">A</button>
+          </div>
+        </header>
+
+        <main>
+          <section class="dashboard-page page-section" id="home" aria-labelledby="welcome-title">
+            <div class="welcome-row">
+              <div>
+                <div class="eyebrow"><span class="eyebrow-spark">✦</span> PERSONAL COLLECTION DASHBOARD</div>
+                <h1 id="welcome-title">Your Aura Vault<span class="title-period">.</span></h1>
+                <p class="welcome-copy">Every card tells a story. This is where yours are kept.</p>
+              </div>
+              <button class="button button-primary" id="browse-button" type="button"><span>＋</span> Add a card</button>
+            </div>
+
+            <div class="hero-panel">
+              <div class="hero-info">
+                <div class="hero-label"><span class="hero-label-icon">✦</span> FEATURED COLLECTION</div>
+                <h2>Lucario</h2>
+                <p>Aura Pokémon <span class="hero-separator">·</span> National Pokédex #0448</p>
+                <div class="hero-progress-caption"><span>COLLECTION COMPLETION</span><strong id="progress-percent">—</strong></div>
+                <div class="progress-track"><span id="progress-bar"></span></div>
+                <div class="hero-progress-foot"><span id="progress-label">Loading your collection</span><span id="total-count">0 prints</span></div>
+                <button class="hero-link" type="button" data-nav="collection">Explore collection <span>↗</span></button>
+              </div>
+              <div class="hero-visual" aria-hidden="true">
+                <div class="hero-ring ring-one"></div><div class="hero-ring ring-two"></div><div class="hero-glow"></div>
+                <div class="hero-symbol">L</div>
+                <div class="hero-art-caption">AURA<br>NO. 0448</div>
+              </div>
+              <div class="hero-index">AV <span>001</span></div>
+            </div>
+
+            <div class="stats-grid">
+              <article class="stat-card">
+                <div class="stat-label"><span>COLLECTION VALUE</span><span class="stat-symbol gold">◈</span></div>
+                <div class="stat-value" id="collection-value">$0.00</div>
+                <div class="stat-meta"><span id="collection-value-note">Estimated market value</span><span class="mini-trend">USD</span></div>
+              </article>
+              <article class="stat-card">
+                <div class="stat-label"><span>UNIQUE PRINTS</span><span class="stat-symbol blue">▦</span></div>
+                <div class="stat-value"><span id="owned-count">0</span><small id="total-count-stat">of —</small></div>
+                <div class="stat-meta"><span>Lucario cards owned</span><span class="mini-trend">↗</span></div>
+              </article>
+              <article class="stat-card">
+                <div class="stat-label"><span>WISHLIST VALUE</span><span class="stat-symbol rare">♡</span></div>
+                <div class="stat-value" id="wishlist-value">$0.00</div>
+                <div class="stat-meta"><span id="wishlist-count">0 cards saved</span><span class="mini-trend">USD</span></div>
+              </article>
+              <article class="stat-card budget-card">
+                <div class="stat-label"><span>MONTHLY BUDGET</span><span class="stat-symbol gold">⌁</span></div>
+                <div class="stat-value" id="budget-remaining">$50.00</div>
+                <div class="budget-progress"><span id="budget-bar"></span></div>
+                <div class="stat-meta"><span id="budget-spent">$0.00 spent of $50</span><button id="log-spend-button" class="inline-action" type="button">+ Log spend</button></div>
+              </article>
+            </div>
+
+            <section class="dashboard-section" aria-labelledby="recent-title">
+              <div class="section-heading">
+                <div><div class="eyebrow">FRESH FROM YOUR VAULT</div><h2 id="recent-title">Recently added</h2></div>
+                <button class="subtle-link" type="button" data-nav="collection">View collection <span>↗</span></button>
+              </div>
+              <div id="recent-grid" class="spotlight-grid"></div>
+            </section>
+
+            <div class="dashboard-lower">
+              <section class="dashboard-section favorite-section" aria-labelledby="favorites-title">
+                <div class="section-heading">
+                  <div><div class="eyebrow">YOUR PERSONAL PICKS</div><h2 id="favorites-title">Featured favorites</h2></div>
+                  <span class="section-count" id="favorites-count">0 SAVED</span>
+                </div>
+                <div id="favorites-grid" class="spotlight-grid small-grid"></div>
+              </section>
+              <section class="dashboard-section wishlist-section" aria-labelledby="wishlist-title">
+                <div class="section-heading">
+                  <div><div class="eyebrow">ON YOUR RADAR</div><h2 id="wishlist-title">Wishlist highlights</h2></div>
+                  <button class="subtle-link" type="button" data-nav="wishlist">View list <span>↗</span></button>
+                </div>
+                <div id="wishlist-highlights" class="wishlist-highlights"></div>
+              </section>
+            </div>
+            <section class="set-progress-section" aria-labelledby="set-progress-title">
+              <div class="section-heading">
+                <div><div class="eyebrow">SET COMPLETION</div><h2 id="set-progress-title">Progress by set</h2></div>
+              </div>
+              <div id="set-progress-list" class="set-progress-list"></div>
+            </section>
+          </section>
+
+          <section class="collection-page page-section" id="collection" aria-labelledby="catalog-title">
+            <div class="collection-heading">
+              <div><div class="eyebrow"><span class="eyebrow-spark">✦</span> THE CARD INDEX</div><h1 id="catalog-title">Your collection<span class="title-period">.</span></h1><p>Explore every print, finish, and card in the Lucario catalog.</p></div>
+              <button class="button button-primary" id="collection-add-button" type="button"><span>＋</span> Add a card</button>
+            </div>
+            <div class="collection-toolbar">
+              <div class="tabs" role="tablist" aria-label="Card list">
+                <button class="tab active" type="button" role="tab" aria-selected="true" data-view="all">Catalog <span id="all-tab-count">—</span></button>
+                <button class="tab" type="button" role="tab" aria-selected="false" data-view="owned">Owned <span id="owned-tab-count">0</span></button>
+                <button class="tab" type="button" role="tab" aria-selected="false" data-view="missing">Missing <span id="missing-tab-count">—</span></button>
+                <button class="tab" type="button" role="tab" aria-selected="false" data-view="wishlist">Wishlist <span id="wishlist-tab-count">0</span></button>
+              </div>
+              <button class="refresh-button" id="refresh-button" type="button"><span aria-hidden="true">↻</span> Sync catalog</button>
+            </div>
+            <div class="filter-panel">
+              <div class="filter-search">
+                <span aria-hidden="true">⌕</span>
+                <input id="collection-search" type="search" placeholder="Search Pokémon, name, set, or card number…" autocomplete="off" aria-label="Search card name, set, number, or Pokémon">
+              </div>
+              <div class="filter-controls">
+                <label class="filter-select"><span>RARITY</span><select id="rarity-filter" aria-label="Filter by rarity"><option value="">All rarities</option></select></label>
+                <label class="filter-select"><span>CONDITION</span><select id="condition-filter" aria-label="Filter by condition"><option value="">All conditions</option><option>Near Mint</option><option>Lightly Played</option><option>Moderately Played</option><option>Heavily Played</option><option>Damaged</option></select></label>
+                <label class="filter-select"><span>LANGUAGE</span><select id="language-filter" aria-label="Filter by language"><option value="">All languages</option></select></label>
+                <label class="filter-select"><span>TYPE</span><select id="type-filter" aria-label="Filter promotional cards"><option value="">All prints</option><option value="promo">Promotional</option><option value="stamp">Stamped</option></select></label>
+                <label class="filter-select sort-filter"><span>SORT</span><select id="sort-select" aria-label="Sort cards"><option value="date-added">Recently added</option><option value="name">Name</option><option value="set">Set</option><option value="price-high">Value: high to low</option><option value="price-low">Value: low to high</option></select></label>
+              </div>
+            </div>
+            <div class="results-line"><span id="result-count">Connecting to card catalog…</span><span class="live-indicator"><span></span> LIVE MARKET DATA</span></div>
+            <div id="catalog-grid" class="card-grid" aria-live="polite"></div>
+            <div id="empty-state" class="empty-state" hidden>
+              <div class="empty-mark">✦</div><h3 id="empty-title">Your vault awaits</h3>
+              <p id="empty-copy">Try a different search, or add a Lucario print to your collection.</p>
+              <button id="empty-action" class="button button-secondary" type="button">Show all prints</button>
+            </div>
+          </section>
+          <div class="data-note"><span class="data-note-icon">i</span><div><strong>About your vault data</strong><p>Card details and artwork load from the Pokémon TCG API. Estimates may be delayed or unavailable. Your collection remains saved on this device; external market links open separately.</p></div></div>
+        </main>
+        <footer><span>AURA VAULT <span class="footer-separator">/</span> YOUR COLLECTION, KEPT PERSONAL</span><span>LOCAL DEVICE STORAGE</span></footer>
+      </div>
+    </div>
+    <nav class="mobile-nav" aria-label="Mobile navigation">
+      <button class="mobile-nav-item active" type="button" data-nav="home"><span>⌂</span>Home</button>
+      <button class="mobile-nav-item" type="button" data-nav="collection"><span>▦</span>Cards</button>
+      <button class="mobile-add" type="button" data-nav="collection" aria-label="Add a card">＋</button>
+      <button class="mobile-nav-item" type="button" data-nav="wishlist"><span>♡</span>Wishlist</button>
+      <button class="mobile-nav-item" type="button" id="mobile-more-button"><span>⇩</span>Backup</button>
+    </nav>
+
+    <dialog id="card-dialog" class="app-dialog">
+      <form id="card-form" method="dialog">
+        <button class="dialog-close" type="button" data-close aria-label="Close dialog">×</button>
+        <div class="dialog-eyebrow" id="dialog-eyebrow">COLLECTION</div><h2 id="dialog-title">Add to collection</h2>
+        <p id="dialog-card-name" class="dialog-card-name"></p>
+        <input type="hidden" id="dialog-card-id"><input type="hidden" id="dialog-action">
+        <label class="field-label" for="variant-select">Print treatment</label><select id="variant-select" class="field-control"></select>
+        <label id="custom-variant-label" class="field-label" for="custom-variant" hidden>Describe the treatment</label>
+        <input id="custom-variant" class="field-control" type="text" maxlength="80" placeholder="e.g. League stamp, staff promo" hidden>
+        <p id="custom-variant-note" class="unverified-note" hidden>User-entered treatment — not verified by the catalog and may not have a market quote.</p>
+        <div id="condition-fields">
+          <label class="field-label" for="condition-select">Condition</label><select id="condition-select" class="field-control"><option>Near Mint</option><option>Lightly Played</option><option>Moderately Played</option><option>Heavily Played</option><option>Damaged</option></select>
+          <label id="paid-label" class="field-label" for="paid-input">Price paid <span class="field-optional">optional · USD</span></label>
+          <div class="price-input-wrap"><span>$</span><input id="paid-input" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00"></div>
+          <label class="field-label" for="notes-input">Collector note <span class="field-optional">optional</span></label><textarea id="notes-input" class="field-control field-textarea" maxlength="300" placeholder="Where you found it, memories, grading notes…"></textarea>
+          <label class="check-label"><input id="budget-check" type="checkbox" checked><span>Count this purchase in this month’s budget</span></label>
+        </div>
+        <div id="duplicate-warning" class="duplicate-warning" role="status" hidden></div>
+        <div class="dialog-market"><span>Current market estimate</span><strong id="dialog-market-value">Unavailable</strong></div>
+        <button id="dialog-submit" class="button button-primary dialog-submit" type="submit">Add card</button>
+      </form>
+    </dialog>
+    <dialog id="detail-dialog" class="app-dialog detail-dialog">
+      <div class="detail-dialog-content">
+        <button class="dialog-close" type="button" data-close aria-label="Close card details">×</button>
+        <div id="detail-content"></div>
+      </div>
+    </dialog>
+    <dialog id="spend-dialog" class="app-dialog spend-dialog">
+      <form id="spend-form" method="dialog">
+        <button class="dialog-close" type="button" data-close aria-label="Close dialog">×</button><div class="dialog-eyebrow">MONTHLY BUDGET</div><h2>Log a purchase</h2>
+        <p class="dialog-card-name">Track spending against your $50 monthly target.</p>
+        <label class="field-label" for="spend-amount">Amount · USD</label><div class="price-input-wrap"><span>$</span><input id="spend-amount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="0.00"></div>
+        <label class="field-label" for="spend-note">Note <span class="field-optional">optional</span></label><input id="spend-note" class="field-control" type="text" maxlength="100" placeholder="What did you pick up?">
+        <button class="button button-primary dialog-submit" type="submit">Save purchase</button>
+      </form>
+    </dialog>
+    <dialog id="prices-dialog" class="app-dialog prices-dialog">
+      <div class="prices-dialog-content">
+        <button class="dialog-close" type="button" data-close aria-label="Close price details">×</button><div class="dialog-eyebrow">CARD PRICE CHECK</div><h2 id="prices-title">Compare prices</h2>
+        <p id="prices-card-details" class="dialog-card-name"></p><label class="field-label" for="prices-variant">Print treatment</label><select id="prices-variant" class="field-control"></select>
+        <div class="price-source-list">
+          <section class="price-source"><div class="price-source-heading"><span>Pokémon TCG API</span><span class="source-tag">TCGPLAYER ESTIMATE</span></div><div class="source-price" id="api-source-price">Unavailable</div><p id="api-source-note">Market estimate for this print treatment.</p>
+            <label class="field-label" for="tcgplayer-product-url">Exact TCGplayer product page</label>
+            <input id="tcgplayer-product-url" class="field-control" type="url" inputmode="url" autocomplete="url" placeholder="https://www.tcgplayer.com/product/…" aria-describedby="tcgplayer-link-note">
+            <p id="tcgplayer-link-note" class="source-url-note">Paste the product-page URL for this exact printing. It will be saved only on this device.</p>
+            <div class="source-link-row"><button id="save-tcgplayer-link" class="source-link source-button" type="button">Save exact link</button><a id="tcgplayer-link" class="source-link source-link-muted source-link-disabled" href="#" target="_blank" rel="noopener noreferrer" aria-disabled="true" tabindex="-1">Exact product link not set</a></div>
+          </section>
+          <section class="price-source"><div class="price-source-heading"><span>PriceCharting</span><span class="source-tag">LIVE SEARCH</span></div><p>Open matching card results to see the site's current price guide. Confirm the print and condition on PriceCharting.</p><a id="pricecharting-link" class="source-link" href="https://www.pricecharting.com/" target="_blank" rel="noopener noreferrer">Search PriceCharting <span>↗</span></a></section>
+          <section class="price-source"><div class="price-source-heading"><span>eBay</span><span class="source-tag">LIVE SEARCH</span></div><p>Check completed sales for a recent sold-price comparison, or browse current asking prices.</p><div class="source-link-row"><a id="ebay-sold-link" class="source-link" href="https://www.ebay.com/" target="_blank" rel="noopener noreferrer">Sold listings <span>↗</span></a><a id="ebay-active-link" class="source-link source-link-muted" href="https://www.ebay.com/" target="_blank" rel="noopener noreferrer">Current listings <span>↗</span></a></div></section>
+        </div><p class="price-disclaimer">PriceCharting and eBay open in new tabs. Confirm the exact card, finish, condition, currency, and shipping before comparing.</p>
+      </div>
+    </dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>
