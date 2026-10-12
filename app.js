@@ -313,6 +313,14 @@
     return formatPokemonName(state.selectedPokemon);
   }
 
+  function pokemonIdFromInput(value) {
+    const search = String(value || '').trim().toLocaleLowerCase();
+    if (!search) return null;
+    return state.species.find((species) =>
+      formatPokemonName(species.name).toLocaleLowerCase() === search ||
+      species.name.toLocaleLowerCase() === search)?.name || null;
+  }
+
   function pokemonSearchTerm(name) {
     const aliases = {
       farfetchd: "farfetch'd",
@@ -1174,18 +1182,15 @@
     }
 
     state.speciesByName = [...state.species].sort((a, b) => b.name.length - a.name.length);
-    const selector = $('#pokemon-filter');
-    selector.innerHTML = [...state.species]
+    const options = [...state.species]
       .sort((a, b) => (pokedexNumber(a) ?? Number.MAX_SAFE_INTEGER) - (pokedexNumber(b) ?? Number.MAX_SAFE_INTEGER))
       .map((species) => {
-        const number = pokedexNumber(species);
-        const label = number
-          ? `#${number} ${formatPokemonName(species.name)}`
-          : formatPokemonName(species.name);
-        return `<option value="${escapeAttribute(species.name)}">${escapeHtml(label)}</option>`;
+        return `<option value="${escapeAttribute(formatPokemonName(species.name))}"></option>`;
       }).join('');
+    $('#pokemon-options').innerHTML = options;
     if (!state.species.some((species) => species.name === state.selectedPokemon)) state.selectedPokemon = 'lucario';
-    selector.value = state.selectedPokemon;
+    $('#pokemon-filter').value = formatPokemonName(state.selectedPokemon);
+    $('#pokemon-filter-status').textContent = 'Type a name and choose a suggestion.';
   }
 
   function restoreCatalogCache() {
@@ -1220,7 +1225,14 @@
 
   async function loadCatalog() {
     if (state.loading) return;
-    const pokemonId = $('#pokemon-filter').value || state.selectedPokemon;
+    const pokemonId = pokemonIdFromInput($('#pokemon-filter').value);
+    if (!pokemonId) {
+      $('#pokemon-filter-status').textContent = 'Enter a Pokémon name from the National Pokédex list.';
+      $('#pokemon-filter').setAttribute('aria-invalid', 'true');
+      return;
+    }
+    $('#pokemon-filter').removeAttribute('aria-invalid');
+    $('#pokemon-filter-status').textContent = `${formatPokemonName(pokemonId)} selected.`;
     const speciesName = pokemonSearchTerm(pokemonId);
     const escapedName = speciesName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     const pokemon = formatPokemonName(pokemonId);
@@ -2845,7 +2857,17 @@
       renderCatalog();
     });
     $('#sort-select').addEventListener('change', (event) => { state.sort = event.target.value; renderCatalog(); });
-    $('#pokemon-filter').addEventListener('change', () => {
+    const choosePokemon = () => {
+      const pokemonId = pokemonIdFromInput($('#pokemon-filter').value);
+      if (!pokemonId) {
+        $('#pokemon-filter-status').textContent = 'Enter a Pokémon name from the National Pokédex list.';
+        $('#pokemon-filter').setAttribute('aria-invalid', 'true');
+        return;
+      }
+      $('#pokemon-filter').value = formatPokemonName(pokemonId);
+      $('#pokemon-filter').removeAttribute('aria-invalid');
+      $('#pokemon-filter-status').textContent = `${formatPokemonName(pokemonId)} selected.`;
+      if (pokemonId === state.selectedPokemon) return;
       state.query = '';
       $('#search-input').value = '';
       $('#collection-search').value = '';
@@ -2856,6 +2878,20 @@
       state.filters.pokemon = '';
       state.filters.condition = '';
       loadCatalog();
+    };
+    $('#pokemon-filter').addEventListener('input', () => {
+      $('#pokemon-filter').removeAttribute('aria-invalid');
+      const pokemonId = pokemonIdFromInput($('#pokemon-filter').value);
+      $('#pokemon-filter-status').textContent = pokemonId
+        ? `Press Enter or choose the suggestion to load ${formatPokemonName(pokemonId)} cards.`
+        : 'Type a Pokémon name and choose a suggestion.';
+    });
+    $('#pokemon-filter').addEventListener('change', choosePokemon);
+    $('#pokemon-filter').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        choosePokemon();
+      }
     });
     $('#set-filter').addEventListener('change', (event) => { state.filters.set = event.target.value; renderCatalog(); });
     $('#rarity-filter').addEventListener('change', (event) => { state.filters.rarity = event.target.value; renderCatalog(); });
