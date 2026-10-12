@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://api.pokemontcg.io">
     <link rel="preconnect" href="https://images.pokemontcg.io">
     <link rel="stylesheet" href="styles.css">
-    <script src="app.js?v=card-scanner-1" defer></script>
+    <script src="app.js?v=card-scanner-3" defer></script>
   </head>
   <body>
     <div class="app-shell">
@@ -74,11 +74,6 @@
                 <h2 id="aura-hero-title"><span>AURA</span> <strong>VAULT</strong></h2>
                 <div class="aura-hero-subtitle">COLLECTION TRACKER</div>
                 <p class="aura-hero-tagline">Your cards. Your collection. All in one place.</p>
-                <div class="aura-hero-progress">
-                  <div class="aura-hero-progress-caption"><span>COLLECTION COMPLETION</span><strong id="progress-percent">—</strong></div>
-                  <div class="aura-progress-track" role="progressbar" aria-label="Selected catalog collection completion" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="progress-bar"></span></div>
-                  <div class="aura-hero-progress-foot"><span id="progress-label">Loading collection</span><span id="total-count">Catalog unavailable</span></div>
-                </div>
                 <div class="aura-hero-actions">
                   <button class="aura-hero-button aura-hero-button-primary" id="hero-explore-button" type="button">▤ <span>Explore Collection</span><b aria-hidden="true">→</b></button>
                   <button class="aura-hero-button" id="hero-all-cards-button" type="button"><span class="aura-grid-icon" aria-hidden="true">▦</span> View All Cards</button>
@@ -122,7 +117,7 @@
               </article>
             </div>
 
-            <section class="dashboard-section" aria-labelledby="recent-title">
+            <section class="dashboard-section recently-added-section" aria-labelledby="recent-title">
               <div class="section-heading">
                 <div><div class="eyebrow">FRESH FROM YOUR VAULT</div><h2 id="recent-title">Recently added</h2></div>
                 <button class="subtle-link" type="button" data-nav="collection">View collection <span>↗</span></button>
@@ -291,17 +286,44 @@
     <dialog id="scanner-dialog" class="app-dialog scanner-dialog">
       <div class="scanner-dialog-content">
         <button class="dialog-close" type="button" data-close aria-label="Close card scanner">×</button>
-        <div class="dialog-eyebrow">CAMERA CARD SCANNER</div>
-        <h2>Identify a card</h2>
-        <p class="scanner-intro">Fit one card inside the frame, with its name clearly visible. The image is analyzed on this device and is not saved.</p>
-        <div class="scanner-camera">
+        <div class="dialog-eyebrow">SCAN CARDS</div>
+        <h2>Identify and queue cards</h2>
+        <p class="scanner-intro">Place one card upright inside the guides. Scanning runs on this device; every match must be confirmed before it is added.</p>
+        <div class="scanner-camera" id="scanner-camera-wrap">
           <video id="scanner-video" autoplay muted playsinline aria-label="Live camera preview"></video>
           <div class="scanner-frame" aria-hidden="true"></div>
         </div>
         <p id="scanner-status" class="scanner-status" role="status" aria-live="polite">Starting camera…</p>
-        <button id="scanner-capture" class="button button-primary dialog-submit" type="button" disabled>Capture & identify</button>
+        <div class="scanner-controls">
+          <button id="scanner-capture" class="button button-primary" type="button" disabled>Capture card</button>
+          <button id="scanner-retake" class="button button-secondary" type="button" hidden>Retake</button>
+          <button id="scanner-torch" class="button button-secondary" type="button" disabled aria-pressed="false">Flashlight</button>
+          <label class="button button-secondary scanner-upload-button" for="scanner-upload">Upload image</label>
+          <input id="scanner-upload" type="file" accept="image/*" capture="environment" hidden>
+        </div>
+        <div id="scanner-image-editor" class="scanner-image-editor" hidden>
+          <div class="scanner-captured-preview"><canvas id="scanner-image-preview" aria-label="Captured card image preview"></canvas></div>
+          <div class="scanner-edit-controls">
+            <button id="scanner-rotate" class="button button-secondary" type="button">Rotate 90°</button>
+            <label class="scanner-crop-control"><span>Crop edges</span><input id="scanner-crop" type="range" min="0" max="25" value="0"><output id="scanner-crop-value">0%</output></label>
+            <button id="scanner-identify" class="button button-primary" type="button">Identify this card</button>
+          </div>
+          <p id="scanner-quality" class="scanner-quality" aria-live="polite"></p>
+          <details class="scanner-ocr-details"><summary>Text read from image</summary><pre id="scanner-ocr-text">Not analyzed yet</pre></details>
+        </div>
+        <section class="scanner-manual-search" aria-label="Search catalog manually">
+          <label class="scanner-search-label" for="scanner-search">Search the card catalog</label>
+          <div class="scanner-search-row"><input id="scanner-search" class="field-control" type="search" placeholder="Card or Pokémon name…" autocomplete="off"><button id="scanner-search-button" class="button button-secondary" type="button">Search</button></div>
+        </section>
         <div id="scanner-results" class="scanner-results" aria-live="polite"></div>
-        <p class="scanner-disclaimer">Identification uses on-device text recognition and the live Pokémon TCG catalog. Results may be incomplete or incorrect; confirm the exact card, set, and number before adding it.</p>
+        <section class="scanner-queue-section" aria-labelledby="scanner-queue-title">
+          <div class="scanner-queue-heading"><h3 id="scanner-queue-title">Scan queue</h3><span id="scanner-queue-count">0 cards</span></div>
+          <p class="scanner-intro">Review each catalog match and set its copy details before adding the confirmed cards.</p>
+          <div id="scanner-queue" class="scanner-queue"></div>
+          <label class="check-label scanner-budget-check"><input id="scanner-budget-check" type="checkbox" checked><span>Count purchased queue cards in this month’s budget</span></label>
+          <button id="scanner-queue-save" class="button button-primary dialog-submit" type="button" disabled>Add confirmed cards</button>
+        </section>
+        <p class="scanner-disclaimer">OCR and image checks can be wrong or incomplete. Similarity is not calculated; no match is selected automatically. Check the artwork, set, number, and language yourself. If recognition is uncertain, search the catalog manually.</p>
       </div>
     </dialog>
     <dialog id="detail-dialog" class="app-dialog detail-dialog">

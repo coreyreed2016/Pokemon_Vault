@@ -44,6 +44,14 @@
     lastCatalogSuccessAt: 0,
     cameraStream: null,
     scanWorker: null,
+    scanImage: null,
+    scanOriginalDataUrl: '',
+    scanRotation: 0,
+    scanCropPercent: 0,
+    scanTorchEnabled: false,
+    scanRunning: false,
+    scanQueue: [],
+    scanRescanQueueId: '',
     dialogCard: null,
     pricesCard: null,
     editingGroupIndex: null,
@@ -202,6 +210,39 @@
     return card.language || card.set?.language || 'English';
   }
 
+  function canonicalLanguage(value) {
+    const normalized = String(value || '').trim().toLowerCase().replace(/_/g, '-');
+    const languages = {
+      en: 'english', english: 'english',
+      ja: 'japanese', japanese: 'japanese',
+      fr: 'french', french: 'french',
+      de: 'german', german: 'german',
+      it: 'italian', italian: 'italian',
+      es: 'spanish', spanish: 'spanish',
+      pt: 'portuguese', portuguese: 'portuguese',
+      ko: 'korean', korean: 'korean',
+      'zh-cn': 'simplified chinese', 'simplified chinese': 'simplified chinese',
+      'zh-tw': 'traditional chinese', 'traditional chinese': 'traditional chinese'
+    };
+    return languages[normalized] || normalized;
+  }
+
+  function displayLanguage(value) {
+    const labels = {
+      english: 'English',
+      japanese: 'Japanese',
+      french: 'French',
+      german: 'German',
+      italian: 'Italian',
+      spanish: 'Spanish',
+      portuguese: 'Portuguese',
+      korean: 'Korean',
+      'simplified chinese': 'Simplified Chinese',
+      'traditional chinese': 'Traditional Chinese'
+    };
+    return labels[canonicalLanguage(value)] || String(value || '').trim();
+  }
+
   function cardPokemonId(card) {
     const normalize = (value) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -312,20 +353,9 @@
     }, 0);
     const unpricedWishlistItems = visibleWishlist.filter((item) => cardValue(item.cardId, item.variant) === null).length;
     const spent = monthlyExpenses();
-    const ratio = total ? Math.min(100, uniqueOwned / total * 100) : 0;
     $('#owned-count').textContent = String(uniqueOwned);
     $('#owned-count-label').textContent = `${selectedPokemonName()} cards owned`;
-    $('#total-count').textContent = state.catalogLoaded
-      ? `${total} total prints available`
-      : state.loading ? 'Loading available prints' : 'Catalog unavailable';
     $('#total-count-stat').textContent = `of ${total || '—'}`;
-    $('#progress-bar').style.width = `${ratio}%`;
-    $('#progress-label').textContent = total
-      ? `${uniqueOwned} unique prints collected`
-      : state.loading ? 'Catalog loading' : state.catalogLoaded ? 'No prints listed in catalog' : 'Catalog unavailable · not counted';
-    $('#progress-percent').textContent = total ? `${Math.round(ratio)}%` : '—';
-    const heroProgress = document.querySelector('.aura-progress-track');
-    heroProgress?.setAttribute('aria-valuenow', String(Math.round(ratio)));
     $('#collection-value').textContent = formatMoney(ownedValue);
     $('#collection-value-note').textContent = `Market estimate · purchase cost ${formatMoney(totalPurchaseCost)}${unpricedOwnedCopies
       ? ` · ${unpricedOwnedCopies} unpriced ${unpricedOwnedCopies === 1 ? 'copy' : 'copies'}`
@@ -414,12 +444,26 @@
     return /stamp|stamped|staff|league|prerelease/i.test(`${card.name || ''} ${card.set?.name || ''} ${card.flavorText || ''}`);
   }
 
-  function spotlightCard(card, subtitle, action = 'details') {
-    const art = card.images?.large || card.images?.small;
-    const price = cardPrice(card, pricesFor(card)[0] || 'normal');
-    return `<button class="spotlight-card" type="button" data-action="${action}" data-card-id="${escapeAttribute(card.id)}">
-      <span class="spotlight-art">${art ? `<img class="card-art" src="${escapeAttribute(art)}" alt="" loading="lazy">` : '<span class="no-art">L</span>'}</span>
-      <span class="spotlight-info"><strong>${escapeHtml(card.name)}</strong><span>${escapeHtml(subtitle || card.set?.name || 'Lucario card')}</span><span class="spotlight-price">${price === null ? 'Market unavailable' : formatMoney(price)}</span></span>
+  function spotlightCard(card, condition, addedAt, action = 'details') {
+    const art = card.images?.small || card.images?.large;
+    const variant = pricesFor(card)[0] || 'normal';
+    const price = cardPrice(card, variant);
+    const date = addedAt && Number.isFinite(new Date(addedAt).getTime())
+      ? new Date(addedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      : '';
+    const marketLabel = price === null
+      ? 'Unavailable'
+      : `${formatMoney(price)}${isStale(card) ? ' · stale' : ''}`;
+    return `<button class="spotlight-card recent-card" type="button" data-action="${action}" data-card-id="${escapeAttribute(card.id)}" aria-label="View recently added ${escapeAttribute(card.name)}">
+      <span class="recent-card-art">${art ? `<img class="card-art" src="${escapeAttribute(art)}" alt="" loading="lazy">` : '<span class="no-art">Artwork unavailable</span>'}</span>
+      <span class="recent-card-info">
+        <span class="recent-card-kicker">${date ? `ADDED ${escapeHtml(date)}` : 'RECENTLY ADDED'}</span>
+        <strong>${escapeHtml(card.name)}</strong>
+        <span class="recent-card-set">${escapeHtml(card.set?.name || 'Set unavailable')}${cardSetNumber(card) ? ` · ${escapeHtml(cardSetNumber(card))}` : ''}</span>
+        <span class="recent-card-condition"><span>Condition</span>${escapeHtml(condition || 'Not recorded')}</span>
+        <span class="recent-card-market"><span>Market estimate</span><strong>${escapeHtml(marketLabel)}</strong></span>
+      </span>
+      <span class="recent-card-arrow" aria-hidden="true">↗</span>
     </button>`;
   }
 
@@ -454,7 +498,7 @@
       .filter((entry, index, entries) => entries.findIndex((other) => other.card.id === entry.card.id) === index)
       .slice(0, 3);
     $('#recent-grid').innerHTML = recent.length
-      ? recent.map((entry) => spotlightCard(entry.card, `${entry.card.set?.name || 'Lucario'} · ${entry.condition}`)).join('')
+      ? recent.map((entry) => spotlightCard(entry.card, entry.condition, entry.date)).join('')
       : '<div class="empty-inline">Add your first card to see it here.</div>';
 
     const favoriteCards = state.data.favorites.map(currentCard).filter(Boolean).slice(0, 6);
@@ -567,7 +611,6 @@
     const owned = cardOwned(card.id);
     const savedEntry = state.data.owned.find((entry) => entry.cardId === card.id);
     const wished = cardWished(card.id);
-    const missing = state.view === 'missing' && !owned;
     const rarity = card.rarity || 'Rarity not listed';
     const setNumber = cardSetNumber(card);
     const number = setNumber || 'No. unavailable';
@@ -582,7 +625,7 @@
     return `<article class="card-tile ${rarityClass(card)}">
       <button class="card-open" type="button" data-action="details" data-card-id="${escapeHtml(card.id)}" aria-label="View ${escapeHtml(card.name)}, ${escapeHtml(setName)}, number ${escapeHtml(setNumber || 'unknown')} details">
       <span class="card-art-wrap">
-        ${owned ? `<span class="tile-mark owned-mark" title="${owned} ${owned === 1 ? 'copy' : 'copies'} in your collection" aria-label="${owned} ${owned === 1 ? 'copy' : 'copies'} in your collection"><span aria-hidden="true">✓</span>${owned > 1 ? `<small>${owned}</small>` : ''}</span>` : missing ? '<span class="tile-mark missing-mark">MISSING</span>' : ''}
+        ${owned ? `<span class="tile-mark owned-mark" title="${owned} ${owned === 1 ? 'copy' : 'copies'} in your collection" aria-label="${owned} ${owned === 1 ? 'copy' : 'copies'} in your collection"><span aria-hidden="true">✓</span>${owned > 1 ? `<small>${owned}</small>` : ''}</span>` : ''}
         ${art ? `<img class="card-art" src="${escapeHtml(art)}" alt="${escapeHtml(card.name)} — ${escapeHtml(setName)}" loading="lazy" decoding="async">` : '<span class="no-art" role="img" aria-label="Card artwork unavailable">L</span>'}
       </span>
       <span class="tile-body">
@@ -1282,50 +1325,82 @@
       state.scanWorker.terminate().catch((error) => console.warn('Could not stop text recognition worker cleanly:', error));
       state.scanWorker = null;
     }
+    state.scanRunning = false;
     if (state.cameraStream) {
       state.cameraStream.getTracks().forEach((track) => track.stop());
       state.cameraStream = null;
     }
     $('#scanner-video').srcObject = null;
     $('#scanner-capture').disabled = true;
+    $('#scanner-torch').disabled = true;
+    state.scanTorchEnabled = false;
+    $('#scanner-torch').setAttribute('aria-pressed', 'false');
+    $('#scanner-torch').textContent = 'Flashlight';
   }
 
   async function openScanner() {
+    state.scanRescanQueueId = '';
+    $('#scanner-camera-wrap').hidden = false;
+    $('#scanner-video').hidden = false;
+    $('#scanner-image-editor').hidden = true;
     $('#scanner-results').replaceChildren();
-    $('#scanner-status').textContent = 'Requesting camera access…';
+    $('#scanner-upload').value = '';
+    $('#scanner-crop').value = '0';
+    $('#scanner-crop-value').value = '0%';
+    renderScanQueue();
     $('#scanner-capture').disabled = true;
     $('#scanner-dialog').showModal();
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-      $('#scanner-status').textContent = 'Camera access requires HTTPS (or localhost) in a browser that supports camera capture.';
+      $('#scanner-camera-wrap').hidden = true;
+      $('#scanner-status').textContent = !window.isSecureContext
+        ? 'Camera access requires HTTPS or localhost in a supported browser. Upload a card image or search manually instead.'
+        : 'This browser does not support camera capture. Upload a card image or search manually instead.';
       return;
     }
+    $('#scanner-status').textContent = 'Requesting the rear-facing camera…';
     try {
       state.cameraStream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
       });
+      if (!$('#scanner-dialog').open) {
+        stopScannerCamera();
+        return;
+      }
       const video = $('#scanner-video');
       video.srcObject = state.cameraStream;
       await video.play();
-      $('#scanner-status').textContent = 'Center the card in the frame, then capture.';
+      const track = state.cameraStream.getVideoTracks()[0];
+      const capabilities = track?.getCapabilities?.();
+      $('#scanner-torch').disabled = !capabilities || !('torch' in capabilities);
+      $('#scanner-status').textContent = 'Hold one card upright inside the guides. Avoid glare and keep the number sharp.';
       $('#scanner-capture').disabled = false;
     } catch (error) {
       console.error('Could not start card scanner camera:', error);
-      $('#scanner-status').textContent = error.name === 'NotAllowedError'
-        ? 'Camera permission was denied. Allow camera access in your browser settings, then try again.'
-        : 'Could not start the camera. Check that it is available and try again.';
+      stopScannerCamera();
+      $('#scanner-camera-wrap').hidden = true;
+      $('#scanner-status').textContent = error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError'
+        ? 'Camera permission was denied. Allow access in browser settings, or upload a card image instead.'
+        : error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError'
+          ? 'No camera was found. Connect a camera or upload a card image instead.'
+          : error.name === 'NotReadableError' || error.name === 'TrackStartError'
+            ? 'The camera is busy or unavailable. Close other camera apps or upload an image instead.'
+            : 'Could not start the camera. Check browser permissions and try uploading a card image.';
     }
   }
 
-  function findScannedPokemon(text) {
-    const normalize = (value) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  function normalizeScanText(value) {
+    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  function findScannedPokemon(text) {
     const speciesByName = [...state.species]
-      .sort((a, b) => normalize(b.name).length - normalize(a.name).length);
-    for (const line of text.split(/\r?\n/).slice(0, 12)) {
-      const normalizedLine = normalize(line);
+      .sort((a, b) => normalizeScanText(b.name).length - normalizeScanText(a.name).length);
+    for (const line of text.split(/\r?\n/)) {
+      const normalizedLine = normalizeScanText(line);
       const match = speciesByName.find((species) => {
-        const name = normalize(species.name);
+        const name = normalizeScanText(species.name);
         return name.length > 2 && normalizedLine.includes(name);
       });
       if (match) return match;
@@ -1333,43 +1408,288 @@
     return null;
   }
 
-  function renderScanResults(cards, species) {
+  function scanNumberFromText(text) {
+    const match = String(text || '').match(/\b(?:no\.?\s*)?(\d{1,4})\s*[\/|]\s*(\d{1,4})\b/i);
+    return match ? { number: match[1].replace(/^0+(?=\d)/, ''), total: match[2] } : null;
+  }
+
+  function scoreScanCandidate(card, text, number, species, manual = false) {
+    const normalizedText = normalizeScanText(text);
+    const normalizedName = normalizeScanText(card.name);
+    const exactName = normalizedName.length > 2 && normalizedText.includes(normalizedName);
+    const cardNumberMatch = Boolean(number && String(Number(card.number)) === String(Number(number.number)));
+    const totalMatch = Boolean(number && (!number.total ||
+      (Number.isInteger(card.set?.printedTotal) && card.set.printedTotal > 0 &&
+        String(card.set.printedTotal) === String(Number(number.total)))));
+    const numberMatch = cardNumberMatch && totalMatch;
+    const pokemonName = species ? normalizeScanText(species.name) : '';
+    const pokemonMatch = Boolean(pokemonName && normalizedName.includes(pokemonName));
+    const reason = manual
+      ? 'Manual catalog search result · verify the exact print'
+      : exactName && numberMatch
+        ? 'Card name and collector number appear in OCR · verify the artwork'
+        : numberMatch
+          ? 'Collector number matches OCR · card name and artwork still need confirmation'
+          : cardNumberMatch && number?.total &&
+            (!Number.isInteger(card.set?.printedTotal) || card.set.printedTotal <= 0)
+            ? 'Card number matches OCR; catalog set total unavailable · verify the exact print'
+          : exactName
+            ? 'Card name appears in OCR · verify set and collector number'
+            : cardNumberMatch && number?.total
+              ? 'Card number matches but printed set total differs · verify the exact print'
+            : pokemonMatch
+              ? `Possible ${formatPokemonName(species.name)} card · exact print not identified`
+              : 'Possible text match · verify card, set, and number';
+    return { card, exactName, numberMatch, cardNumberMatch, totalMatch, pokemonMatch, reason };
+  }
+
+  function renderScanResults(candidates, heading = 'Possible catalog matches') {
     const results = $('#scanner-results');
-    if (!cards.length) {
-      results.innerHTML = '<p class="scanner-no-results">No matching cards were found. Try a clearer photo with the card name in focus.</p>';
+    if (!candidates.length) {
+      results.innerHTML = '<p class="scanner-no-results">Card not confidently identified. Search the catalog manually, upload a clearer image, or retake the photo. No card has been selected.</p>';
       return;
     }
-    results.innerHTML = `<h3>Possible matches for ${escapeHtml(formatPokemonName(species.name))}</h3>` +
-      cards.map((card) => {
+    results.innerHTML = `<h3>${escapeHtml(heading)}</h3><p class="scanner-intro">Select a candidate only after checking its artwork and printed details.</p>` +
+      candidates.slice(0, 3).map(({ card, reason }) => {
         const art = card.images?.large || card.images?.small;
         return `<button class="scanner-result" type="button" data-scan-card-id="${escapeAttribute(card.id)}">
           ${art ? `<img src="${escapeAttribute(art)}" alt="" loading="lazy">` : '<span class="scanner-result-no-art">?</span>'}
-          <span><strong>${escapeHtml(card.name || 'Unknown card')}</strong><span>${escapeHtml(card.set?.name || 'Set unavailable')} · ${escapeHtml(cardSetNumber(card) || '?')}</span><span>${escapeHtml(card.rarity || 'Rarity unavailable')}</span></span>
-          <span class="scanner-result-arrow">›</span>
+          <span><strong>${escapeHtml(card.name || 'Unknown card')}</strong><span>${escapeHtml(card.set?.name || 'Set unavailable')} · ${escapeHtml(cardSetNumber(card) || 'Number unavailable')}</span><span>${escapeHtml(cardLanguage(card))} · ${escapeHtml(card.rarity || 'Rarity unavailable')}</span><small>${escapeHtml(reason)}</small></span>
+          <span class="scanner-result-arrow">Add to queue ›</span>
         </button>`;
       }).join('');
   }
 
-  async function identifyCapturedCard() {
+  async function queryScanCatalog(query, text = '', species = null, number = null, manual = false) {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      $('#scanner-status').textContent = 'Enter a Pokémon or card name to search the catalog.';
+      return;
+    }
+    $('#scanner-search-button').disabled = true;
+    $('#scanner-status').textContent = 'Searching the Pokémon TCG catalog…';
+    $('#scanner-results').replaceChildren();
+    try {
+      const fetchCandidates = async (fieldQuery) => {
+        const url = new URL(API);
+        url.searchParams.set('q', fieldQuery);
+        url.searchParams.set('pageSize', '100');
+        url.searchParams.set('orderBy', '-set.releaseDate');
+        const payload = await fetchCatalogPage(url);
+        if (!Array.isArray(payload.data)) throw new Error('Card API returned an unexpected response.');
+        return payload.data;
+      };
+      const safeQuery = trimmed.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const queries = [fetchCandidates(`name:"${safeQuery}"`)];
+      if (!manual && number) queries.push(fetchCandidates(`number:"${number.number}"`));
+      const responses = await Promise.allSettled(queries);
+      const cardsById = new Map();
+      for (const response of responses) {
+        if (response.status === 'fulfilled') {
+          for (const card of response.value) cardsById.set(card.id, card);
+        }
+      }
+      if (!cardsById.size) {
+        const failure = responses.find((response) => response.status === 'rejected');
+        if (!responses.some((response) => response.status === 'fulfilled')) {
+          throw failure?.reason || new Error('The catalog request did not complete.');
+        }
+        state.scannedCards = [];
+        $('#scanner-status').textContent = `Card not confidently identified${failure ? ' (some catalog searches were unavailable)' : ''}. Try another search or image; no card has been selected.`;
+        renderScanResults([]);
+        return;
+      }
+      const cards = [...cardsById.values()];
+      state.scannedCards = cards;
+      const candidates = cards.map((card) =>
+        scoreScanCandidate(card, text, number, species, manual))
+        .sort((a, b) => Number(b.exactName && b.numberMatch) - Number(a.exactName && a.numberMatch) ||
+          Number(b.numberMatch) - Number(a.numberMatch) ||
+          Number(b.exactName) - Number(a.exactName) ||
+          Number(b.cardNumberMatch) - Number(a.cardNumberMatch) ||
+          Number(b.pokemonMatch) - Number(a.pokemonMatch));
+      $('#scanner-status').textContent = candidates.length
+        ? `Showing up to ${Math.min(candidates.length, 3)} of ${candidates.length} catalog candidates${responses.some((response) => response.status === 'rejected') ? ' (some search terms were unavailable)' : ''}. None has been selected.`
+        : 'Card not confidently identified. Try a manual catalog search or a clearer image.';
+      renderScanResults(candidates, manual ? 'Catalog search results' : 'Possible catalog matches');
+    } catch (error) {
+      console.error('Could not search catalog for scanned card:', error);
+      $('#scanner-status').textContent = 'Catalog search failed. Your image remains available; check the connection or search again.';
+      $('#scanner-results').innerHTML = `<p class="scanner-no-results">${escapeHtml(error.message || 'An unexpected catalog error occurred.')}</p>`;
+    } finally {
+      $('#scanner-search-button').disabled = false;
+    }
+  }
+
+  function updateScanPreview() {
+    if (!state.scanImage) return null;
+    const image = state.scanImage;
+    const rotation = ((state.scanRotation % 360) + 360) % 360;
+    const rotatedWidth = rotation % 180 === 0 ? image.naturalWidth : image.naturalHeight;
+    const rotatedHeight = rotation % 180 === 0 ? image.naturalHeight : image.naturalWidth;
+    const rotated = document.createElement('canvas');
+    rotated.width = rotatedWidth;
+    rotated.height = rotatedHeight;
+    const rotatedContext = rotated.getContext('2d');
+    if (!rotatedContext) throw new Error('Could not prepare the image for on-device recognition.');
+    rotatedContext.translate(rotatedWidth / 2, rotatedHeight / 2);
+    rotatedContext.rotate(rotation * Math.PI / 180);
+    rotatedContext.drawImage(image, -image.naturalWidth / 2, -image.naturalHeight / 2);
+
+    const cropFraction = state.scanCropPercent / 100;
+    const cropWidth = Math.max(1, Math.round(rotatedWidth * (1 - cropFraction * 2)));
+    const cropHeight = Math.max(1, Math.round(rotatedHeight * (1 - cropFraction * 2)));
+    const cropLeft = Math.round((rotatedWidth - cropWidth) / 2);
+    const cropTop = Math.round((rotatedHeight - cropHeight) / 2);
+    const scale = Math.min(1, 2000 / Math.max(cropWidth, cropHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(cropWidth * scale));
+    canvas.height = Math.max(1, Math.round(cropHeight * scale));
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('Could not prepare the image for on-device recognition.');
+    context.drawImage(rotated, cropLeft, cropTop, cropWidth, cropHeight, 0, 0, canvas.width, canvas.height);
+    const preview = $('#scanner-image-preview');
+    preview.width = canvas.width;
+    preview.height = canvas.height;
+    preview.getContext('2d')?.drawImage(canvas, 0, 0);
+    return canvas;
+  }
+
+  function scanImageQuality(canvas) {
+    const sampleWidth = Math.min(160, canvas.width);
+    const sampleHeight = Math.min(160, canvas.height);
+    const sample = document.createElement('canvas');
+    sample.width = sampleWidth;
+    sample.height = sampleHeight;
+    const sampleContext = sample.getContext('2d', { willReadFrequently: true });
+    if (!sampleContext) return 'Image checks unavailable; inspect the preview before continuing.';
+    sampleContext.drawImage(canvas, 0, 0, sampleWidth, sampleHeight);
+    const pixels = sampleContext.getImageData(0, 0, sampleWidth, sampleHeight).data;
+    let brightness = 0;
+    let brightPixels = 0;
+    let edgeDifference = 0;
+    let edges = 0;
+    const luminance = (x, y) => {
+      const offset = (y * sampleWidth + x) * 4;
+      return .2126 * pixels[offset] + .7152 * pixels[offset + 1] + .0722 * pixels[offset + 2];
+    };
+    for (let y = 0; y < sampleHeight; y += 1) {
+      for (let x = 0; x < sampleWidth; x += 1) {
+        const level = luminance(x, y);
+        brightness += level;
+        if (level > 248) brightPixels += 1;
+        if (x > 0) {
+          edgeDifference += Math.abs(level - luminance(x - 1, y));
+          edges += 1;
+        }
+        if (y > 0) {
+          edgeDifference += Math.abs(level - luminance(x, y - 1));
+          edges += 1;
+        }
+      }
+    }
+    const count = sampleWidth * sampleHeight;
+    const average = brightness / count;
+    const hints = [];
+    if (Math.min(canvas.width, canvas.height) < 400) hints.push('image is small');
+    if (average < 55) hints.push('image may be dark');
+    if (average > 225) hints.push('image may be overexposed');
+    if (brightPixels / count > .2) hints.push('possible glare');
+    if (edgeDifference / Math.max(1, edges) < 8) hints.push('image may be soft or out of focus');
+    return hints.length
+      ? `Image check: ${hints.join(', ')}. These are hints only; continue if the card text is readable.`
+      : 'Image check looks usable. Still confirm the text and artwork; checks are approximate.';
+  }
+
+  async function setScanImage(image) {
+    state.scanImage = image;
+    state.scanRotation = 0;
+    state.scanCropPercent = 0;
+    $('#scanner-crop').value = '0';
+    $('#scanner-crop-value').value = '0%';
+    $('#scanner-image-editor').hidden = false;
+    $('#scanner-camera-wrap').hidden = true;
+    $('#scanner-results').replaceChildren();
+    $('#scanner-ocr-text').textContent = 'Not analyzed yet';
+    const preview = updateScanPreview();
+    try {
+      $('#scanner-quality').textContent = scanImageQuality(preview);
+    } catch (error) {
+      console.warn('Scanner image quality checks were unavailable:', error);
+      $('#scanner-quality').textContent = 'Image checks could not run; inspect the preview and continue if the card text is readable.';
+    }
+    $('#scanner-status').textContent = 'Review the image, rotate or crop if needed, then identify it.';
+    $('#scanner-retake').hidden = false;
+  }
+
+  async function loadScanImage(dataUrl) {
+    const image = new Image();
+    image.decoding = 'async';
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error('The selected image could not be opened. Choose another photo.'));
+      image.src = dataUrl;
+    });
+    state.scanOriginalDataUrl = dataUrl;
+    await setScanImage(image);
+  }
+
+  async function captureScanImage() {
     const video = $('#scanner-video');
     if (!video.videoWidth || !video.videoHeight) {
-      $('#scanner-status').textContent = 'Camera is still starting. Wait a moment and try again.';
+      $('#scanner-status').textContent = 'Camera is still starting. Wait a moment or upload a photo.';
       return;
     }
     const canvas = document.createElement('canvas');
-    const scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+    const scale = Math.min(1, 2000 / Math.max(video.videoWidth, video.videoHeight));
     canvas.width = Math.round(video.videoWidth * scale);
     canvas.height = Math.round(video.videoHeight * scale);
-    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-    $('#scanner-capture').disabled = true;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      $('#scanner-status').textContent = 'Could not capture the camera image. Try uploading a photo.';
+      return;
+    }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    await loadScanImage(canvas.toDataURL('image/jpeg', .92));
+  }
+
+  async function toggleScannerTorch() {
+    const track = state.cameraStream?.getVideoTracks()[0];
+    if (!track || $('#scanner-torch').disabled) return;
+    const next = !state.scanTorchEnabled;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: next }] });
+      state.scanTorchEnabled = next;
+      $('#scanner-torch').setAttribute('aria-pressed', String(next));
+      $('#scanner-torch').textContent = next ? 'Turn flashlight off' : 'Flashlight';
+    } catch (error) {
+      console.warn('Camera flashlight could not be changed:', error);
+      $('#scanner-status').textContent = 'This camera could not change its flashlight setting.';
+    }
+  }
+
+  async function identifyCapturedCard() {
+    if (!state.scanImage || state.scanRunning) {
+      $('#scanner-status').textContent = 'Capture or upload a card image before identifying it.';
+      return;
+    }
+    let canvas;
+    try {
+      canvas = updateScanPreview();
+    } catch (error) {
+      $('#scanner-status').textContent = error.message;
+      return;
+    }
+    state.scanRunning = true;
+    $('#scanner-identify').disabled = true;
     $('#scanner-results').replaceChildren();
-    $('#scanner-status').textContent = 'Reading the card name on this device…';
+    $('#scanner-status').textContent = 'Reading visible card text on this device…';
     let worker;
     try {
       const Tesseract = await loadOcrLibrary();
       worker = await Tesseract.createWorker('eng', 1, {
         logger: (message) => {
-          if (message.status === 'recognizing text') {
+          if (message.status === 'recognizing text' && $('#scanner-dialog').open) {
             $('#scanner-status').textContent = `Reading card text… ${Math.round(message.progress * 100)}%`;
           }
         }
@@ -1377,39 +1697,225 @@
       state.scanWorker = worker;
       const { data } = await worker.recognize(canvas);
       if (!$('#scanner-dialog').open) return;
-      const species = findScannedPokemon(data.text || '');
-      if (!species) {
-        $('#scanner-status').textContent = 'Could not confidently read a Pokémon name from the top of the card.';
-        $('#scanner-results').innerHTML = '<p class="scanner-no-results">Try again with the card name sharp, upright, and free of glare.</p>';
+      const ocrText = String(data.text || '').trim();
+      $('#scanner-ocr-text').textContent = ocrText || 'No readable text found.';
+      const number = scanNumberFromText(ocrText);
+      const species = findScannedPokemon(ocrText);
+      const nameQuery = species
+        ? pokemonSearchTerm(species.name)
+        : ocrText.split(/\r?\n/)
+          .map((line) => line.replace(/[^a-zA-Z0-9' -]/g, '').trim())
+          .find((line) => line.length >= 4 && line.length <= 45 && /[a-z]{3}/i.test(line));
+      if (!nameQuery) {
+        $('#scanner-status').textContent = 'Card not confidently identified. No usable name was read; search the catalog manually or try another image.';
+        renderScanResults([]);
         return;
       }
-      $('#scanner-status').textContent = `Searching the live card catalog for ${formatPokemonName(species.name)}…`;
-      const searchName = pokemonSearchTerm(species.name).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-      const url = new URL(API);
-      url.searchParams.set('q', `name:"${searchName}"`);
-      url.searchParams.set('pageSize', '30');
-      url.searchParams.set('orderBy', '-set.releaseDate');
-      const response = await fetch(url, { headers: { Accept: 'application/json' } });
-      if (!response.ok) throw new Error(`Card API returned HTTP ${response.status}`);
-      const payload = await response.json();
-      if (!Array.isArray(payload.data)) throw new Error('Card API returned an unexpected response.');
-      state.scannedCards = payload.data;
-      $('#scanner-status').textContent = payload.data.length
-        ? 'Choose the exact print that matches your card.'
-        : `No catalog entries found for ${formatPokemonName(species.name)}.`;
-      renderScanResults(payload.data, species);
+      const searchName = String(nameQuery).split(/\s+/).slice(0, 5).join(' ');
+      $('#scanner-search').value = species ? formatPokemonName(species.name) : searchName;
+      await queryScanCatalog(searchName, ocrText, species, number, false);
     } catch (error) {
       if ($('#scanner-dialog').open) {
         console.error('Could not identify scanned card:', error);
-        $('#scanner-status').textContent = 'Card identification failed. Check your connection and try again.';
-        $('#scanner-results').innerHTML = `<p class="scanner-no-results">${escapeHtml(error.message || 'An unexpected error occurred.')}</p>`;
+        $('#scanner-status').textContent = 'On-device text recognition failed. Search the catalog manually or try another image.';
+        $('#scanner-results').innerHTML = `<p class="scanner-no-results">${escapeHtml(error.message || 'Recognition could not be completed.')}</p>`;
       }
     } finally {
       if (worker && state.scanWorker === worker) {
-        await worker.terminate();
+        await worker.terminate().catch((error) => console.warn('Could not stop text recognition worker cleanly:', error));
         state.scanWorker = null;
       }
-      if ($('#scanner-dialog').open && state.cameraStream) $('#scanner-capture').disabled = false;
+      state.scanRunning = false;
+      if ($('#scanner-dialog').open) $('#scanner-identify').disabled = false;
+    }
+  }
+
+  function scannerDuplicateWarning(entry) {
+    const selectedVariant = entry.variant === '__custom__' ? entry.customVariant.trim() : entry.variant;
+    const ownedCopies = state.data.owned
+      .filter((owned) => owned.cardId === entry.card.id && owned.variant === selectedVariant &&
+        canonicalLanguage(owned.language || entry.card.lang || '') === canonicalLanguage(entry.language) &&
+        (owned.condition || 'Near Mint') === entry.condition)
+      .reduce((count, owned) => count + owned.copies.length, 0);
+    return ownedCopies
+      ? `<p class="scanner-duplicate-warning" role="status">You already have ${ownedCopies} ${escapeHtml(entry.condition)} ${escapeHtml(selectedVariant)} ${ownedCopies === 1 ? 'copy' : 'copies'} of this print in ${escapeHtml(entry.language)}. Adding is allowed if these are additional copies.</p>`
+      : '';
+  }
+
+  function renderScanQueue() {
+    const queue = $('#scanner-queue');
+    $('#scanner-queue-count').textContent = `${state.scanQueue.length} ${state.scanQueue.length === 1 ? 'card' : 'cards'}`;
+    $('#scanner-queue-save').disabled = state.scanQueue.length === 0 || state.savingCard;
+    queue.innerHTML = state.scanQueue.length
+      ? state.scanQueue.map((entry) => {
+        const card = entry.card;
+        const art = card.images?.small || card.images?.large;
+        const variants = new Set([...Object.keys(card.tcgplayer?.prices || {}), 'normal']);
+        return `<article class="scanner-queue-item" data-queue-id="${escapeAttribute(entry.id)}">
+          <div class="scanner-queue-card">
+            ${art ? `<img src="${escapeAttribute(art)}" alt="" loading="lazy">` : '<span class="scanner-result-no-art">Artwork unavailable</span>'}
+            <div><strong>${escapeHtml(card.name)}</strong><span>${escapeHtml(card.set?.name || 'Set unavailable')} · ${escapeHtml(cardSetNumber(card) || 'Number unavailable')}</span><span>${escapeHtml(cardLanguage(card))} · ${escapeHtml(card.rarity || 'Rarity unavailable')}</span><small>Match manually confirmed by you</small></div>
+          </div>
+          <div class="scanner-queue-fields">
+            <label>Copies<input data-queue-field="quantity" type="number" min="1" max="25" step="1" value="${escapeAttribute(entry.quantity)}" inputmode="numeric"></label>
+            <label>Condition<select data-queue-field="condition">${['Near Mint', 'Lightly Played', 'Moderately Played', 'Heavily Played', 'Damaged'].map((condition) => `<option${entry.condition === condition ? ' selected' : ''}>${condition}</option>`).join('')}</select></label>
+            <label>Language<input data-queue-field="language" type="text" maxlength="40" value="${escapeAttribute(entry.language)}"></label>
+            <label>Acquisition<select data-queue-field="method">${[['purchased', 'Purchased'], ['traded', 'Traded'], ['gifted', 'Gifted'], ['pulled-from-pack', 'Pulled from pack']].map(([value, label]) => `<option value="${value}"${entry.method === value ? ' selected' : ''}>${label}</option>`).join('')}</select></label>
+            <label>Printing<select data-queue-field="variant">${[...variants].map((key) => {
+              const value = displayVariant(key);
+              const noQuote = cardPrice(card, key) === null ? ' · no quote' : '';
+              return `<option value="${escapeAttribute(value)}"${entry.variant === value ? ' selected' : ''}>${escapeHtml(value + noQuote)}</option>`;
+            }).join('')}<option value="__custom__"${entry.variant === '__custom__' ? ' selected' : ''}>Other / special printing…</option></select></label>
+            <label class="scanner-queue-custom-variant"${entry.variant === '__custom__' ? '' : ' hidden'}>Describe printing<input data-queue-field="customVariant" type="text" maxlength="80" value="${escapeAttribute(entry.customVariant)}" placeholder="e.g. League stamp, staff promo"></label>
+            <label>Price paid · each<input data-queue-field="paid" type="number" min="0" step="0.01" value="${escapeAttribute(entry.paid)}" inputmode="decimal" placeholder="Optional"></label>
+            <label>Purchase / acquisition date<input data-queue-field="date" type="date" value="${escapeAttribute(entry.date)}"></label>
+            <label>Seller / source<input data-queue-field="seller" type="text" maxlength="100" value="${escapeAttribute(entry.seller)}" placeholder="Optional"></label>
+            <label class="scanner-queue-notes">Notes<input data-queue-field="note" type="text" maxlength="500" value="${escapeAttribute(entry.note)}" placeholder="Optional"></label>
+          </div>
+          <div class="scanner-duplicate-warning-slot">${scannerDuplicateWarning(entry)}</div>
+          <div class="scanner-queue-actions">
+            <button class="button button-secondary" type="button" data-queue-action="rescan" data-queue-id="${escapeAttribute(entry.id)}">Rescan / replace match</button>
+            <button class="button button-secondary" type="button" data-queue-action="remove" data-queue-id="${escapeAttribute(entry.id)}">Remove</button>
+          </div>
+        </article>`;
+      }).join('')
+      : '<p class="scanner-queue-empty">No cards queued. Identify an image or search the catalog, then add a confirmed candidate.</p>';
+  }
+
+  function addScanCandidate(cardId) {
+    const card = state.scannedCards.find((candidate) => candidate.id === cardId);
+    if (!card) {
+      $('#scanner-status').textContent = 'That catalog result is no longer available. Search again before queuing it.';
+      return;
+    }
+    const replacement = state.scanQueue.findIndex((entry) => entry.id === state.scanRescanQueueId);
+    const entry = {
+      id: state.scanRescanQueueId || crypto.randomUUID(),
+      card,
+      quantity: replacement >= 0 ? state.scanQueue[replacement].quantity : 1,
+      condition: replacement >= 0 ? state.scanQueue[replacement].condition : 'Near Mint',
+      variant: replacement >= 0 ? state.scanQueue[replacement].variant : displayVariant(primaryVariant(card)),
+      customVariant: replacement >= 0 ? state.scanQueue[replacement].customVariant : '',
+      language: replacement >= 0 ? state.scanQueue[replacement].language : cardLanguage(card),
+      method: replacement >= 0 ? state.scanQueue[replacement].method : 'purchased',
+      paid: replacement >= 0 ? state.scanQueue[replacement].paid : '',
+      date: replacement >= 0 ? state.scanQueue[replacement].date : localDateInputValue(),
+      seller: replacement >= 0 ? state.scanQueue[replacement].seller : '',
+      note: replacement >= 0 ? state.scanQueue[replacement].note : ''
+    };
+    if (replacement >= 0) state.scanQueue.splice(replacement, 1, entry);
+    else state.scanQueue.push(entry);
+    state.scanRescanQueueId = '';
+    renderScanQueue();
+    $('#scanner-status').textContent = `${card.name} ${replacement >= 0 ? 'match replaced in' : 'added to'} the review queue.`;
+    $('#scanner-results').replaceChildren();
+  }
+
+  function handleScanUpload(file) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      $('#scanner-status').textContent = 'Choose an image file such as JPEG, PNG, or HEIC if your browser can decode it.';
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      $('#scanner-status').textContent = 'Images must be 20 MB or smaller. Choose a smaller image.';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => {
+      $('#scanner-status').textContent = 'Could not read this image file. Choose another photo or search manually.';
+    };
+    reader.onload = async () => {
+      try {
+        if (typeof reader.result !== 'string') throw new Error('The selected image could not be read.');
+        await loadScanImage(reader.result);
+      } catch (error) {
+        console.error('Could not load uploaded scanner image:', error);
+        $('#scanner-status').textContent = error.message || 'Could not open the selected image.';
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function saveScanQueue() {
+    if (state.savingCard || !state.scanQueue.length) return;
+    const entries = [...state.scanQueue];
+    for (const [index, entry] of entries.entries()) {
+      const quantity = Number(entry.quantity);
+      const paid = entry.paid === '' ? 0 : Number(entry.paid);
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 25) {
+        $('#scanner-status').textContent = `Queue card ${index + 1}: enter a quantity from 1 to 25.`;
+        return;
+      }
+      if (!Number.isFinite(paid) || paid < 0) {
+        $('#scanner-status').textContent = `Queue card ${index + 1}: enter a valid price or leave it blank.`;
+        return;
+      }
+      if (!entry.language.trim()) {
+        $('#scanner-status').textContent = `Queue card ${index + 1}: enter a language before saving.`;
+        return;
+      }
+      if (entry.variant === '__custom__' && !entry.customVariant.trim()) {
+        $('#scanner-status').textContent = `Queue card ${index + 1}: describe the special printing or choose a catalog treatment.`;
+        return;
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(entry.date) ||
+          !Number.isFinite(new Date(`${entry.date}T12:00:00`).getTime())) {
+        $('#scanner-status').textContent = `Queue card ${index + 1}: choose a valid purchase date.`;
+        return;
+      }
+    }
+
+    state.savingCard = true;
+    $('#scanner-queue-save').disabled = true;
+    const savedIds = new Set();
+    try {
+      for (const [index, entry] of entries.entries()) {
+        $('#scanner-status').textContent = `Saving confirmed card ${index + 1} of ${entries.length}…`;
+        const card = entry.card;
+        const metadata = {
+          pokemon: cardPokemonId(card) || '',
+          cardName: card.name || '',
+          setName: card.set?.name || '',
+          cardNumber: cardSetNumber(card) || card.number || '',
+          rarity: card.rarity || '',
+          language: displayLanguage(entry.language),
+          storageLocation: '',
+          binderPage: '',
+          note: entry.note.trim(),
+          tags: []
+        };
+        const copies = Array.from({ length: Number(entry.quantity) }, () => ({
+          condition: entry.condition,
+          paid: entry.paid === '' ? 0 : Number(entry.paid),
+          addedAt: entry.date,
+          acquisitionMethod: entry.method,
+          seller: entry.seller.trim(),
+          location: '',
+          binderPage: '',
+          gradeStatus: 'ungraded',
+          gradingCompany: '',
+          officialGrade: '',
+          certificationNumber: ''
+        }));
+        const variant = entry.variant === '__custom__' ? entry.customVariant.trim() : entry.variant;
+        if (!addOwned(card, variant, copies, $('#scanner-budget-check').checked, metadata)) {
+          state.scanQueue = state.scanQueue.filter((queued) => !savedIds.has(queued.id));
+          renderScanQueue();
+          $('#scanner-status').textContent = `Saving stopped at card ${index + 1}. Earlier cards were saved; the remaining queue is still available to retry.`;
+          return;
+        }
+        savedIds.add(entry.id);
+      }
+      state.scanQueue = state.scanQueue.filter((entry) => !savedIds.has(entry.id));
+      renderScanQueue();
+      renderCatalog();
+      loadOwnedCards();
+      $('#scanner-status').textContent = `${savedIds.size} confirmed ${savedIds.size === 1 ? 'card was' : 'cards were'} added to your collection.`;
+      showToast(`${savedIds.size} ${savedIds.size === 1 ? 'card' : 'cards'} added from the scan queue.`);
+    } finally {
+      state.savingCard = false;
+      renderScanQueue();
     }
   }
 
@@ -2391,14 +2897,111 @@
     });
     $('#mobile-more-button').addEventListener('click', exportData);
     $('#scan-card-button').addEventListener('click', openScanner);
-    $('#scanner-capture').addEventListener('click', identifyCapturedCard);
+    $('#scanner-capture').addEventListener('click', () => captureScanImage().catch((error) => {
+      console.error('Could not capture scanner image:', error);
+      $('#scanner-status').textContent = error.message || 'Could not capture the card image.';
+    }));
+    $('#scanner-retake').addEventListener('click', () => {
+      state.scanImage = null;
+      state.scanOriginalDataUrl = '';
+      $('#scanner-image-editor').hidden = true;
+      $('#scanner-results').replaceChildren();
+      if (state.cameraStream?.active) {
+        $('#scanner-camera-wrap').hidden = false;
+        $('#scanner-video').hidden = false;
+        $('#scanner-capture').disabled = false;
+        $('#scanner-status').textContent = 'Center the card inside the guides and capture again.';
+      } else {
+        $('#scanner-camera-wrap').hidden = true;
+        $('#scanner-status').textContent = 'Upload another image or search the catalog manually.';
+      }
+    });
+    $('#scanner-torch').addEventListener('click', toggleScannerTorch);
+    $('#scanner-upload').addEventListener('change', (event) => {
+      handleScanUpload(event.target.files[0]);
+      event.target.value = '';
+    });
+    $('#scanner-rotate').addEventListener('click', () => {
+      state.scanRotation = (state.scanRotation + 90) % 360;
+      try {
+        const canvas = updateScanPreview();
+        $('#scanner-quality').textContent = scanImageQuality(canvas);
+      } catch (error) {
+        $('#scanner-status').textContent = error.message;
+      }
+    });
+    $('#scanner-crop').addEventListener('input', (event) => {
+      state.scanCropPercent = Number(event.target.value);
+      $('#scanner-crop-value').value = `${state.scanCropPercent}%`;
+      try {
+        const canvas = updateScanPreview();
+        $('#scanner-quality').textContent = scanImageQuality(canvas);
+      } catch (error) {
+        $('#scanner-status').textContent = error.message;
+      }
+    });
+    $('#scanner-identify').addEventListener('click', identifyCapturedCard);
+    $('#scanner-search-button').addEventListener('click', () =>
+      queryScanCatalog($('#scanner-search').value, $('#scanner-search').value, null, null, true));
+    $('#scanner-search').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        queryScanCatalog($('#scanner-search').value, $('#scanner-search').value, null, null, true);
+      }
+    });
+    $('#scanner-queue-save').addEventListener('click', saveScanQueue);
     $('#scanner-dialog').addEventListener('close', stopScannerCamera);
     $('#scanner-results').addEventListener('click', (event) => {
       const button = event.target.closest('[data-scan-card-id]');
-      const card = button ? currentCard(button.dataset.scanCardId) : null;
-      if (!card) return;
-      $('#scanner-dialog').close();
-      openCardDialog(card, 'owned');
+      if (button) addScanCandidate(button.dataset.scanCardId);
+    });
+    $('#scanner-queue').addEventListener('input', (event) => {
+      const field = event.target.closest('[data-queue-field]');
+      const row = event.target.closest('[data-queue-id]');
+      const entry = state.scanQueue.find((item) => item.id === row?.dataset.queueId);
+      if (field && entry) entry[field.dataset.queueField] = field.value;
+    });
+    $('#scanner-queue').addEventListener('change', (event) => {
+      const field = event.target.closest('[data-queue-field]');
+      const row = event.target.closest('[data-queue-id]');
+      const entry = state.scanQueue.find((item) => item.id === row?.dataset.queueId);
+      if (field && entry) {
+        entry[field.dataset.queueField] = field.value;
+        if (field.dataset.queueField === 'variant') {
+          row.querySelector('.scanner-queue-custom-variant').hidden = field.value !== '__custom__';
+        }
+        if (['condition', 'language', 'variant', 'customVariant'].includes(field.dataset.queueField)) {
+          row.querySelector('.scanner-duplicate-warning-slot').innerHTML = scannerDuplicateWarning(entry);
+        }
+      }
+    });
+    $('#scanner-queue').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-queue-action]');
+      if (!button) return;
+      const index = state.scanQueue.findIndex((item) => item.id === button.dataset.queueId);
+      if (index < 0) return;
+      if (button.dataset.queueAction === 'remove') {
+        state.scanQueue.splice(index, 1);
+        renderScanQueue();
+        return;
+      }
+      if (button.dataset.queueAction === 'rescan') {
+        state.scanRescanQueueId = state.scanQueue[index].id;
+        state.scanImage = null;
+        state.scanOriginalDataUrl = '';
+        $('#scanner-image-editor').hidden = true;
+        $('#scanner-results').replaceChildren();
+        if (state.cameraStream?.active) {
+          $('#scanner-camera-wrap').hidden = false;
+          $('#scanner-video').hidden = false;
+          $('#scanner-capture').disabled = false;
+          $('#scanner-status').textContent = 'Capture a replacement image and confirm a different candidate to replace this queue entry.';
+        } else {
+          $('#scanner-camera-wrap').hidden = true;
+          $('#scanner-status').textContent = 'Upload a replacement image. The existing queued card remains until you choose a new match.';
+          $('#scanner-upload').click();
+        }
+      }
     });
     $('#card-picker-search').addEventListener('input', renderCardPicker);
     $('#card-picker-results').addEventListener('click', (event) => {
