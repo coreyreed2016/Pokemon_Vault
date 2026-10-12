@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://api.pokemontcg.io">
     <link rel="preconnect" href="https://images.pokemontcg.io">
     <link rel="stylesheet" href="styles.css">
-    <script src="app.js?v=pokemon-search-1" defer></script>
+    <script src="app.js?v=pokemon-search-3" defer></script>
   </head>
   <body>
     <div class="app-shell">
@@ -166,7 +166,7 @@
                 <input id="collection-search" type="search" placeholder="Search Pokémon, name, set, or card number…" autocomplete="off" aria-label="Search card name, set, number, or Pokémon">
               </div>
               <div class="filter-controls">
-                <label class="filter-select pokemon-search-filter"><span>POKÉMON</span><input id="pokemon-filter" class="pokemon-search-input" type="text" list="pokemon-options" autocomplete="off" spellcheck="false" aria-label="Type or select a Pokémon" placeholder="Type a Pokémon name…" value="Lucario"><datalist id="pokemon-options"><option value="Lucario"></option></datalist><small id="pokemon-filter-status" class="pokemon-filter-status" aria-live="polite">Type a name and choose a suggestion.</small></label>
+                <label class="filter-select pokemon-search-filter"><span>POKÉMON</span><input id="pokemon-filter" class="pokemon-search-input" type="search" role="combobox" aria-autocomplete="list" aria-controls="pokemon-suggestions" aria-expanded="false" aria-label="Type or select a Pokémon" placeholder="Type a Pokémon name…" value="Lucario" autocomplete="off" spellcheck="false"><div id="pokemon-suggestions" class="pokemon-suggestions" role="listbox" aria-label="Pokémon suggestions" hidden></div><small id="pokemon-filter-status" class="pokemon-filter-status" aria-live="polite">Type a name and choose a suggestion.</small></label>
                 <label class="filter-select" id="card-pokemon-filter-wrap"><span>POKÉMON IN RESULTS</span><select id="card-pokemon-filter" aria-label="Filter cards by Pokémon"><option value="">All Pokémon</option></select></label>
                 <label class="filter-select" id="set-filter-wrap"><span>SET / COLLECTION</span><select id="set-filter" aria-label="Filter by card set"><option value="">All sets</option></select></label>
                 <label class="filter-select" id="rarity-filter-wrap"><span>RARITY</span><select id="rarity-filter" aria-label="Filter by rarity"><option value="">All rarities</option></select></label>

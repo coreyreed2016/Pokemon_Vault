@@ -313,12 +313,23 @@
     return formatPokemonName(state.selectedPokemon);
   }
 
+  function pokemonSearchKey(value) {
+    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
   function pokemonIdFromInput(value) {
     const search = String(value || '').trim().toLocaleLowerCase();
     if (!search) return null;
-    return state.species.find((species) =>
+    const exactMatch = state.species.find((species) =>
       formatPokemonName(species.name).toLocaleLowerCase() === search ||
-      species.name.toLocaleLowerCase() === search)?.name || null;
+      species.name.toLocaleLowerCase() === search);
+    if (exactMatch) return exactMatch.name;
+    const normalizedQuery = pokemonSearchKey(search);
+    const normalizedMatches = state.species.filter((species) =>
+      pokemonSearchKey(formatPokemonName(species.name)) === normalizedQuery ||
+      pokemonSearchKey(species.name) === normalizedQuery);
+    return normalizedMatches.length === 1 ? normalizedMatches[0].name : null;
   }
 
   function pokemonSearchTerm(name) {
@@ -1182,12 +1193,6 @@
     }
 
     state.speciesByName = [...state.species].sort((a, b) => b.name.length - a.name.length);
-    const options = [...state.species]
-      .sort((a, b) => (pokedexNumber(a) ?? Number.MAX_SAFE_INTEGER) - (pokedexNumber(b) ?? Number.MAX_SAFE_INTEGER))
-      .map((species) => {
-        return `<option value="${escapeAttribute(formatPokemonName(species.name))}"></option>`;
-      }).join('');
-    $('#pokemon-options').innerHTML = options;
     if (!state.species.some((species) => species.name === state.selectedPokemon)) state.selectedPokemon = 'lucario';
     $('#pokemon-filter').value = formatPokemonName(state.selectedPokemon);
     $('#pokemon-filter-status').textContent = 'Type a name and choose a suggestion.';
@@ -2857,16 +2862,52 @@
       renderCatalog();
     });
     $('#sort-select').addEventListener('change', (event) => { state.sort = event.target.value; renderCatalog(); });
-    const choosePokemon = () => {
-      const pokemonId = pokemonIdFromInput($('#pokemon-filter').value);
+    const closePokemonSuggestions = () => {
+      $('#pokemon-suggestions').hidden = true;
+      $('#pokemon-filter').setAttribute('aria-expanded', 'false');
+    };
+    const renderPokemonSuggestions = () => {
+      const input = $('#pokemon-filter');
+      const query = pokemonSearchKey(input.value);
+      const list = $('#pokemon-suggestions');
+      if (query.length < 2) {
+        list.innerHTML = '';
+        list.hidden = true;
+        input.setAttribute('aria-expanded', 'false');
+        return;
+      }
+      const matches = state.species
+        .filter((species) => pokemonSearchKey(formatPokemonName(species.name)).includes(query) ||
+          pokemonSearchKey(species.name).includes(query))
+        .sort((a, b) => {
+          const aName = pokemonSearchKey(formatPokemonName(a.name));
+          const bName = pokemonSearchKey(formatPokemonName(b.name));
+          return Number(!aName.startsWith(query)) - Number(!bName.startsWith(query)) ||
+            (pokedexNumber(a) ?? Number.MAX_SAFE_INTEGER) - (pokedexNumber(b) ?? Number.MAX_SAFE_INTEGER);
+        })
+        .slice(0, 12);
+      list.innerHTML = matches.map((species) => {
+        const number = pokedexNumber(species);
+        return `<button class="pokemon-suggestion" type="button" role="option" data-pokemon-id="${escapeAttribute(species.name)}">
+          <span>${escapeHtml(formatPokemonName(species.name))}</span>
+          ${number ? `<small>#${number}</small>` : ''}
+        </button>`;
+      }).join('') || '<p class="pokemon-suggestions-empty">No Pokémon match that name.</p>';
+      list.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+    };
+    const choosePokemon = (selectedId = pokemonIdFromInput($('#pokemon-filter').value)) => {
+      const pokemonId = selectedId;
       if (!pokemonId) {
         $('#pokemon-filter-status').textContent = 'Enter a Pokémon name from the National Pokédex list.';
         $('#pokemon-filter').setAttribute('aria-invalid', 'true');
+        renderPokemonSuggestions();
         return;
       }
       $('#pokemon-filter').value = formatPokemonName(pokemonId);
       $('#pokemon-filter').removeAttribute('aria-invalid');
       $('#pokemon-filter-status').textContent = `${formatPokemonName(pokemonId)} selected.`;
+      closePokemonSuggestions();
       if (pokemonId === state.selectedPokemon) return;
       state.query = '';
       $('#search-input').value = '';
@@ -2885,13 +2926,50 @@
       $('#pokemon-filter-status').textContent = pokemonId
         ? `Press Enter or choose the suggestion to load ${formatPokemonName(pokemonId)} cards.`
         : 'Type a Pokémon name and choose a suggestion.';
+      renderPokemonSuggestions();
     });
-    $('#pokemon-filter').addEventListener('change', choosePokemon);
+    $('#pokemon-suggestions').addEventListener('click', (event) => {
+      const option = event.target.closest('[data-pokemon-id]');
+      if (option) choosePokemon(option.dataset.pokemonId);
+    });
+    $('#pokemon-filter').addEventListener('change', () => {
+      const pokemonId = pokemonIdFromInput($('#pokemon-filter').value);
+      if (pokemonId) {
+        choosePokemon(pokemonId);
+      } else {
+        $('#pokemon-filter-status').textContent = 'Choose a Pokémon from the suggestions.';
+        $('#pokemon-filter').setAttribute('aria-invalid', 'true');
+      }
+    });
     $('#pokemon-filter').addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowDown' && !$('#pokemon-suggestions').hidden) {
+        event.preventDefault();
+        $('#pokemon-suggestions').querySelector('[data-pokemon-id]')?.focus();
+        return;
+      }
+      if (event.key === 'Escape') {
+        closePokemonSuggestions();
+        return;
+      }
       if (event.key === 'Enter') {
         event.preventDefault();
         choosePokemon();
       }
+    });
+    $('#pokemon-suggestions').addEventListener('keydown', (event) => {
+      const options = [...$('#pokemon-suggestions').querySelectorAll('[data-pokemon-id]')];
+      const currentIndex = options.indexOf(event.target);
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        options[(currentIndex + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length]?.focus();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        closePokemonSuggestions();
+        $('#pokemon-filter').focus();
+      }
+    });
+    document.addEventListener('pointerdown', (event) => {
+      if (!event.target.closest('.pokemon-search-filter')) closePokemonSuggestions();
     });
     $('#set-filter').addEventListener('change', (event) => { state.filters.set = event.target.value; renderCatalog(); });
     $('#rarity-filter').addEventListener('change', (event) => { state.filters.rarity = event.target.value; renderCatalog(); });
